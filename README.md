@@ -107,34 +107,43 @@ Hamoix برای مدل‌های مختلف پنل سرویس آماده شده �
 
 ## نصب سریع روی VPS
 
-راهنمای کامل شامل نصب PHP، MariaDB، Nginx، SSL، 3x-ui، cron و OPcache در فایل زیر قرار دارد:
-
-➡️ [راهنمای استقرار روی VPS](DEPLOY_VPS.md)
-
-خلاصه‌ی مسیر نصب:
+اگر DNS دامنه از قبل به IP سرور اشاره می‌کند و پورت‌های **80 و 443** باز هستند، نصب کامل را با یک دستور انجام دهید. دستور زیر PHP 8.2+، MariaDB، Nginx، Composer، HTTPS و cron را نصب می‌کند، سورس را دریافت می‌کند و دامنه را به پنل متصل می‌کند:
 
 ```bash
-apt update
-apt install -y nginx mariadb-server php8.2-fpm php8.2-cli php8.2-mysql \
-  php8.2-curl php8.2-gd php8.2-zip php8.2-intl php8.2-mbstring \
-  php8.2-xml php8.2-bcmath unzip curl composer
-
-mkdir -p /var/www/hamoix
-cd /var/www/hamoix
-# سورس را در این مسیر قرار دهید
-composer install --no-dev --no-interaction --prefer-dist
+curl -fsSL https://raw.githubusercontent.com/hamed9898/HaMoix/main/install-hamoix.sh | sudo bash -s -- panel.example.com admin@example.com
 ```
 
-سپس:
+ایمیل اختیاری است و برای اعلان‌های تمدید گواهی Let's Encrypt استفاده می‌شود. اگر ایمیل را حذف کنید، گواهی بدون اعلان ایمیلی ثبت می‌شود:
 
-1. یک دیتابیس و کاربر MySQL/MariaDB بسازید.
-2. دامنه را روی مسیر پروژه تنظیم و HTTPS را فعال کنید.
-3. آدرس `https://YOUR-DOMAIN/installer/` را باز کنید.
-4. اطلاعات دیتابیس و اطلاعات مدیر را در Wizard وارد کنید.
-5. پس از اتمام نصب، دسترسی عمومی به پوشه‌ی `installer` را حذف یا خود پوشه را پاک کنید.
-6. از مسیر `https://YOUR-DOMAIN/panel/login.php` وارد پنل مدیریت شوید.
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamed9898/HaMoix/main/install-hamoix.sh | sudo bash -s -- panel.example.com
+```
 
-> اطلاعات اتصال دیتابیس و دامنه را در اختیار کاربران یا repository عمومی قرار ندهید. فایل `config.php` باید خارج از دسترس عمومی باقی بماند یا توسط تنظیمات وب‌سرور محافظت شود.
+اسکریپت این کارها را انجام می‌دهد:
+
+1. نصب PHP 8.2 یا بالاتر، افزونه‌های مورد نیاز، MariaDB، Nginx، Composer و Certbot
+2. ساخت دیتابیس و کاربر اختصاصی Hamoix
+3. دریافت آخرین سورس از همین repository و نصب وابستگی‌های Composer
+4. تنظیم Nginx و دریافت گواهی HTTPS برای دامنه
+5. ثبت cron بررسی انقضای سرویس‌ها و آماده‌سازی مسیر `/installer/`
+
+در پایان، اسکریپت آدرس Wizard و اطلاعات دیتابیس را چاپ می‌کند. سپس این آدرس را باز کنید:
+
+```text
+https://panel.example.com/installer/
+```
+
+اطلاعات دیتابیس چاپ‌شده را در Wizard وارد کنید و رمز مدیر را تعیین کنید. بعد از تکمیل Wizard، پوشه‌ی `installer` به‌صورت خودکار حذف می‌شود و ورود از مسیر زیر انجام می‌شود:
+
+```text
+https://panel.example.com/panel/login.php
+```
+
+> قبل از اجرا، رکورد A/AAAA دامنه را روی IP همین سرور قرار دهید. اطلاعات دیتابیس در فایل root-only `/root/.hamoix-db-credentials` ذخیره می‌شود؛ آن را در repository یا log عمومی قرار ندهید.
+
+راهنمای کامل شامل نصب دستی، اتصال 3x-ui، تنظیمات SSL، cron و OPcache در فایل زیر قرار دارد:
+
+➡️ [راهنمای استقرار روی VPS](DEPLOY_VPS.md)
 
 ---
 

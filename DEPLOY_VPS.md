@@ -8,7 +8,27 @@ Hamoix در این نسخه **بدون ربات تلگرام** است؛ فروش
 
 ---
 
-## ۱) نصب پیش‌نیازها
+## نصب سریع با یک دستور
+
+ابتدا رکورد A/AAAA دامنه را روی IP سرور قرار دهید و مطمئن شوید پورت‌های 80 و 443 در فایروال باز هستند. سپس روی سرور اجرا کنید:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamed9898/HaMoix/main/install-hamoix.sh | sudo bash -s -- panel.example.com admin@example.com
+```
+
+ایمیل اختیاری است؛ برای اجرای بدون ایمیل:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamed9898/HaMoix/main/install-hamoix.sh | sudo bash -s -- panel.example.com
+```
+
+این دستور PHP 8.2+، افزونه‌های PHP، MariaDB، Nginx، Composer، Certbot و cron را نصب می‌کند، دیتابیس و کاربر اختصاصی می‌سازد، سورس را از repository دریافت می‌کند، HTTPS را فعال می‌کند و دامنه را به `/var/www/hamoix` متصل می‌کند.
+
+در پایان اطلاعات دیتابیس و آدرس Wizard چاپ می‌شود. آدرس `https://panel.example.com/installer/` را باز کنید، همان اطلاعات دیتابیس را وارد کنید و رمز مدیر را تعیین کنید. پس از نصب موفق، Wizard خودش حذف می‌شود و ورود از `https://panel.example.com/panel/login.php` انجام خواهد شد.
+
+> اگر DNS هنوز منتشر نشده باشد یا صدور گواهی Let's Encrypt شکست بخورد، اسکریپت متوقف می‌شود؛ ابتدا DNS و دسترسی پورت‌های 80/443 را اصلاح کنید و سپس دوباره اجرا کنید.
+
+## ۱) نصب دستی پیش‌نیازها
 
 ```bash
 apt update && apt install -y nginx mariadb-server php8.2-fpm php8.2-mysql \
