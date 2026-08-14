@@ -1,5 +1,75 @@
 <?php
 
+/* Baseline web hardening shared by the installer, admin and reseller panels. */
+if (!function_exists('hamoix_security_headers')) {
+    function hamoix_security_headers(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: SAMEORIGIN');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
+        header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+        if (($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['REQUEST_SCHEME'] ?? '') === 'https') {
+            header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+        }
+    }
+}
+
+if (!function_exists('hamoix_csrf_token')) {
+    function hamoix_csrf_token(): string
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            @session_start();
+        }
+        if (empty($_SESSION['hamoix_csrf'])) {
+            $_SESSION['hamoix_csrf'] = bin2hex(random_bytes(32));
+        }
+        return (string) $_SESSION['hamoix_csrf'];
+    }
+}
+
+if (!function_exists('hamoix_csrf_check')) {
+    function hamoix_csrf_check(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            return;
+        }
+        $incoming = $_POST['_csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        if (is_string($incoming) && $incoming !== '') {
+            if (!hash_equals(hamoix_csrf_token(), $incoming)) {
+                http_response_code(403);
+                exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+            }
+            return;
+        }
+
+        // Protect legacy forms that predate the hidden token. Browsers send
+        // Origin/Referer on same-origin form submissions; a cross-site request
+        // cannot forge these values.
+        $origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
+        $referer = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $sameOrigin = ($origin !== '' && hash_equals($scheme . '://' . $host, rtrim($origin, '/')))
+            || ($referer !== '' && str_starts_with($referer, $scheme . '://' . $host . '/'));
+        if (!$sameOrigin) {
+            http_response_code(403);
+            exit('درخواست نامعتبر — توکن CSRF لازم است');
+        }
+    }
+}
+
+if (!function_exists('hamoix_csrf_field')) {
+    function hamoix_csrf_field(): string
+    {
+        return '<input type="hidden" name="_csrf" value="' . htmlspecialchars(hamoix_csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
+    }
+}
+
+hamoix_security_headers();
+
 $dbname     = '';
 $usernamedb = '';
 $passworddb = '';

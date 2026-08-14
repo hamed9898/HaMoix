@@ -14,9 +14,25 @@ if (!isset($_SESSION["user"]) || !$result) {
     return;
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$_csrf = $_SESSION['csrf_token'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $incomingCsrf = (string) ($_POST['_csrf'] ?? '');
+    if (!hash_equals((string) $_csrf, $incomingCsrf)) {
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+    }
+}
+
 $statusmessage = false;
 $infomesssage  = "";
-$id_product    = htmlspecialchars($_GET['id'], ENT_QUOTES, 'UTF-8');
+$id_product    = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if ($id_product === false) {
+    http_response_code(400);
+    exit('شناسه محصول نامعتبر است');
+}
 $product       = select("product", "*", "id", $id_product, "select");
 
 $panelQuery = $pdo->prepare("SELECT name_panel FROM marzban_panel ORDER BY id ASC");
@@ -142,7 +158,8 @@ if ($product == false) {
                 <?php endif; ?>
 
                 <?php if ($product): ?>
-                <form action="productedit.php?action=save&id=<?php echo $id_product; ?>" method="POST">
+                <form action="productedit.php?action=save&id=<?php echo (int) $id_product; ?>" method="POST">
+                    <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
 
                     <div class="form-group">
                         <label class="form-label">نام محصول</label>

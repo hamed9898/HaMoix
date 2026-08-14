@@ -15,8 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $err = '';
     if (!reseller_verify_password($current, (string) $reseller['password'])) {
         $err = 'رمز عبور فعلی اشتباه است.';
-    } elseif (strlen($newPass) < 6) {
-        $err = 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد.';
+    } elseif (strlen($newPass) < 12) {
+        $err = 'رمز عبور جدید باید حداقل ۱۲ کاراکتر باشد.';
     } elseif ($newPass !== $confirm) {
         $err = 'تکرار رمز عبور با رمز جدید یکسان نیست.';
     }
@@ -56,11 +56,11 @@ reseller_layout_head('تغییر رمز عبور', 'password', $reseller);
             </div>
             <div class="form-group">
                 <label class="form-label">رمز عبور جدید</label>
-                <input type="password" name="newpass" class="form-control" minlength="6" required autocomplete="new-password">
+                <input type="password" name="newpass" class="form-control" minlength="12" required autocomplete="new-password">
             </div>
             <div class="form-group">
                 <label class="form-label">تکرار رمز عبور جدید</label>
-                <input type="password" name="confirm" class="form-control" minlength="6" required autocomplete="new-password">
+                <input type="password" name="confirm" class="form-control" minlength="12" required autocomplete="new-password">
             </div>
             <button type="submit" class="btn btn-primary mt-2">
                 <?php echo icon('save', 'svg-icon svg-sm'); ?> ذخیره رمز عبور

@@ -22,6 +22,11 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    hamoix_csrf_check();
+}
+$financeCsrf = hamoix_csrf_token();
+
 
 $FIN_GROUPS = [
     'cart' => [
@@ -272,6 +277,7 @@ function hamoix_fin_mask_secret($v) {
             <?php endif; ?>
 
             <form method="POST" action="finance.php" autocomplete="off">
+                <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($financeCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                 <input type="hidden" name="_save" value="1">
 
                 <div class="setting-grid">

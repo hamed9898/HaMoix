@@ -7,21 +7,39 @@ $query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
 $query->execute();
 $result = $query->fetch(PDO::FETCH_ASSOC);
 
-if(isset($_GET['action']) && $_GET['action'] == "save"){
-    update("x_ui", "setting", $_POST['settings'], "codepanel", $_POST['namepanel']);
-    header('Location: seeting_x_ui.php');
-}
-
 if(!isset($_SESSION["user"]) || !$result){
     header('Location: login.php');
-    return;
+    exit;
 }
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $jsonData = file_get_contents('php://input');
-    $dataArray = json_decode($jsonData, true);
-    if (json_last_error() === JSON_ERROR_NONE) {
 
-        file_put_contents('text.json', json_encode($dataArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$_csrf = $_SESSION['csrf_token'];
+$textPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'text.json';
+$textUrl = '../text.json';
+
+if(isset($_GET['action']) && $_GET['action'] === 'save'){
+    if (!hash_equals((string) $_csrf, (string) ($_GET['_csrf'] ?? ''))) {
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+    }
+    update("x_ui", "setting", (string) ($_POST['settings'] ?? ''), "codepanel", (string) ($_POST['namepanel'] ?? ''));
+    header('Location: seeting_x_ui.php');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $incomingCsrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($_POST['_csrf'] ?? '');
+    if (!is_string($incomingCsrf) || !hash_equals((string) $_csrf, $incomingCsrf)) {
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+    }
+    $jsonData = file_get_contents('php://input', false, null, 0, 1048576);
+    $dataArray = json_decode($jsonData, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($dataArray)) {
+
+        file_put_contents($textPath, json_encode($dataArray, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL, LOCK_EX);
         echo 'Data saved successfully';
         exit;
     } else {
@@ -29,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 }
-$textbot = file_get_contents($Pathfile.'text.json');
+$textbot = is_file($textPath) ? file_get_contents($textPath) : '{}';
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-color="blue" data-theme="dark">
@@ -171,7 +189,7 @@ $textbot = file_get_contents($Pathfile.'text.json');
     document.getElementById('jsonForm').innerHTML = '<div class="text-loading"><i class="fa-solid fa-spinner fa-spin"></i> در حال بارگذاری متن‌ها...</div>';
 
 
-    fetch('<?php echo $Pathfile; ?>text.json')
+    fetch('<?php echo htmlspecialchars($textUrl, ENT_QUOTES, 'UTF-8'); ?>')
         .then(response => response.json())
         .then(data => {
             document.getElementById('jsonForm').innerHTML = '';
@@ -202,7 +220,8 @@ $textbot = file_get_contents($Pathfile.'text.json');
         fetch('text.php', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>'
             },
             body: JSON.stringify(updatedJson)
         })

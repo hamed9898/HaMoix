@@ -166,8 +166,10 @@ $dispatchAsync = static function (array $urls, bool $useLoopback): array {
             CURLOPT_NOSIGNAL        => true,
             CURLOPT_CONNECTTIMEOUT_MS => 1500,
             CURLOPT_TIMEOUT_MS      => 4000,
-            CURLOPT_SSL_VERIFYPEER  => false,
-            CURLOPT_SSL_VERIFYHOST  => 0,
+            // Keep TLS verification enabled; self-signed deployments must
+            // explicitly opt out with BOT_CURL_VERIFY_TLS = false.
+            CURLOPT_SSL_VERIFYPEER  => !defined('BOT_CURL_VERIFY_TLS') || BOT_CURL_VERIFY_TLS !== false,
+            CURLOPT_SSL_VERIFYHOST  => (!defined('BOT_CURL_VERIFY_TLS') || BOT_CURL_VERIFY_TLS !== false) ? 2 : 0,
             CURLOPT_FOLLOWLOCATION  => false,
             CURLOPT_FORBID_REUSE    => true,
             CURLOPT_FRESH_CONNECT   => true,

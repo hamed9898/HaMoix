@@ -722,8 +722,8 @@ class IBSng
         curl_setopt($this->handler, CURLOPT_RETURNTRANSFER, TRUE);
 
         curl_setopt($this->handler, CURLOPT_USERAGENT, $this->agent);
-        curl_setopt($this->handler, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($this->handler, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($this->handler, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($this->handler, CURLOPT_SSL_VERIFYPEER, true);
         curl_setopt($this->handler, CURLOPT_COOKIEFILE, $this->getCookie());
         curl_setopt($this->handler, CURLOPT_COOKIEJAR, $this->getCookie());
         $output = curl_exec($this->handler);

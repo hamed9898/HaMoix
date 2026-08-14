@@ -3,6 +3,26 @@ error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 @ini_set('display_errors', '0');
 @ini_set('log_errors', '1');
 @ini_set('default_charset', 'UTF-8');
+
+ini_set('session.use_strict_mode', '1');
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_samesite', 'Lax');
+$__installerSecure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $__installerSecure,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+session_start();
+$installerCsrf = $_SESSION['hamoix_installer_csrf'] ?? '';
+if (!is_string($installerCsrf) || strlen($installerCsrf) < 64) {
+    $installerCsrf = bin2hex(random_bytes(32));
+    $_SESSION['hamoix_installer_csrf'] = $installerCsrf;
+}
+unset($__installerSecure);
+
 require_once __DIR__ . '/domain.php';
 
 $uPOST = sanitizeInput($_POST);
@@ -22,7 +42,11 @@ if(phpversion() < 8.2){
 $tempPath = dirname(dirname($_SERVER['SCRIPT_NAME']));
 
 $tempPath = str_replace('//', '/', '/' . trim($tempPath, '/'));
-$webAddress = rtrim($_SERVER['HTTP_HOST'] . $tempPath, '/') . '/';
+$installerHost = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+if (!preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::[0-9]{1,5})?$/i', $installerHost)) {
+    $installerHost = '';
+}
+$webAddress = rtrim($installerHost . $tempPath, '/') . '/';
 $success = false;
 // Only the simple web-host installation is supported. The migration
 // (migrate_free_to_pro) and dedicated-server (VPS) install paths were removed,
@@ -31,27 +55,45 @@ $installType = 'simple';
 $serverType  = 'cpanel';
 $hasDbBackup = 'no';
 $currentStep = 1;
-$installFieldTotal = 4;
+$installFieldTotal = 6;
 $currentInstallField = isset($uPOST['current_install_field']) ? (int)$uPOST['current_install_field'] : 1;
 $currentStep = 1;
 $currentInstallField = max(1, min($installFieldTotal, $currentInstallField));
 
+$adminUsername = trim((string) ($uPOST['admin_username'] ?? 'admin'));
+$adminPassword = (string) ($uPOST['admin_password'] ?? '');
 
 function isHttps() {
+    // Do not trust a client-controlled X-Forwarded-Proto header for the
+    // installer because database credentials are submitted on this page.
     return (
-        ($_SERVER['REQUEST_SCHEME'] ?? 'http') === 'https' ||
-        ($_SERVER['HTTPS'] ?? 'off') === 'on' ||
-        ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
+        ($_SERVER['REQUEST_SCHEME'] ?? '') === 'https' ||
+        ($_SERVER['HTTPS'] ?? 'off') === 'on'
     );
 }
 if(isset($uPOST['submit']) && $uPOST['submit']) {
     $ERROR = [];
-    $SUCCESS[] = "✅ نصب پنل وب آغاز شد";
+    $SUCCESS = [];
+    if (!hash_equals($installerCsrf, (string) ($uPOST['_csrf'] ?? ''))) {
+        $ERROR[] = 'درخواست نصب نامعتبر است؛ صفحه را تازه‌سازی و دوباره تلاش کنید.';
+    }
+    if ($installerHost === '') {
+        $ERROR[] = 'نام دامنه/Host درخواست معتبر نیست.';
+    }
+    if (!preg_match('/^[A-Za-z0-9_.-]{3,64}$/', $adminUsername)) {
+        $ERROR[] = 'نام کاربری مدیر باید ۳ تا ۶۴ کاراکتر معتبر باشد.';
+    }
+    if (strlen($adminPassword) < 12) {
+        $ERROR[] = 'رمز مدیر باید حداقل ۱۲ کاراکتر باشد.';
+    }
     $rawConfigData = file_get_contents($configDirectory);
     $dbInfo['host'] = 'localhost';
-    $dbInfo['name'] = $uPOST['database_name'];
-    $dbInfo['username'] = $uPOST['database_username'];
-    $dbInfo['password'] = $uPOST['database_password'];
+    $dbInfo['name'] = trim((string) ($uPOST['database_name'] ?? ''));
+    $dbInfo['username'] = trim((string) ($uPOST['database_username'] ?? ''));
+    $dbInfo['password'] = (string) ($uPOST['database_password'] ?? '');
+    if ($dbInfo['name'] === '' || $dbInfo['username'] === '') {
+        $ERROR[] = 'اطلاعات دیتابیس کامل نیست.';
+    }
     $document = normalizeDomainAddressWithPort('https://' . rtrim($webAddress, '/') . '/index.php');
     if ($document === null) {
         $ERROR[] = 'آدرس پنل نامعتبر است.';
@@ -59,19 +101,24 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
     if(!isHttps()) {
         $ERROR[] = 'پنل Hamoix نیازمند فعال بودن SSL (https) هست';
         $ERROR[] = '<i>اگر از فعال بودن SSL مطمئن هستید، سرور پشت proxy/CDN (مثل Cloudflare) است – headers را در cPanel چک کنید یا با https مستقیم باز کنید.</i>';
-        $sslLink = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
-        $ERROR[] = '<a href="' . $sslLink . '">' . $sslLink . '</a>';
+        $sslLink = 'https://' . $installerHost . (string) ($_SERVER['SCRIPT_NAME'] ?? '/installer/index.php');
+        $safeSslLink = escapeHtml($sslLink);
+        $ERROR[] = '<a href="' . $safeSslLink . '">' . $safeSslLink . '</a>';
     }
 
     try {
         $dsn = "mysql:host=" . $dbInfo['host'] . ";dbname=" . $dbInfo['name'] . ";charset=utf8mb4";
-        $pdo = new PDO($dsn, $dbInfo['username'], $dbInfo['password']);
+        $pdo = new PDO($dsn, $dbInfo['username'], $dbInfo['password'], [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
         $SUCCESS[] = "✅ اتصال به دیتابیس موفقیت آمیز بود!";
     }
     catch (\PDOException $e) {
         $ERROR[] = "❌ عدم اتصال به دیتابیس: ";
         $ERROR[] = "اطلاعات ورودی را بررسی کنید.";
-        $ERROR[] = "<code>".$e->getMessage()."</code>";
+        error_log('[installer] database connection failed: ' . $e->getMessage());
     }
     if(empty($ERROR)) {
         $replacements = [
@@ -91,57 +138,79 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
             // HTTPS ports do not block the first installation.
             $tableResult = runTableMigrationsLocally($tablesDirectory, $rootDirectory);
             $SUCCESS[] = "✅ جداول دیتابیس ایجاد/بروزرسانی شد";
-            ensureAdminRecord($dbInfo, '0');
-            $SUCCESS[] = "✅ نصب وب‌محور تکمیل شد — نام کاربری ورود: admin";
-            $success = true;
-
-            scheduleInstallerSelfDelete(__DIR__);
+            $adminSetup = ensureAdminRecord($dbInfo, '0', $adminUsername, $adminPassword);
+            if (empty($adminSetup['ok'])) {
+                $ERROR[] = 'ساخت حساب مدیر ناموفق بود؛ لاگ سرور را بررسی کنید.';
+            } else {
+                $SUCCESS[] = "✅ نصب وب‌محور تکمیل شد — نام کاربری ورود: " . escapeHtml($adminUsername);
+                if (!empty($adminSetup['configured'])) {
+                    $SUCCESS[] = 'رمز مدیر انتخاب‌شده هنگام نصب برای ورود استفاده می‌شود.';
+                } else {
+                    $SUCCESS[] = 'حساب مدیر قبلی حفظ شد؛ برای ورود از اطلاعات قبلی استفاده کنید.';
+                }
+                $success = true;
+                scheduleInstallerSelfDelete(__DIR__);
+            }
         }
     }
 }
 
-function ensureAdminRecord($dbInfo, $adminNumber) {
+function ensureAdminRecord($dbInfo, $adminNumber, $adminUsername, $adminPassword) {
     try {
         $connect = @new mysqli('localhost', $dbInfo['username'], $dbInfo['password'], $dbInfo['name']);
         if ($connect->connect_error) {
-            return false;
+            error_log('[installer] admin database connection failed: ' . $connect->connect_error);
+            return ['ok' => false, 'configured' => false];
         }
-        $connect->set_charset("utf8mb4");
+        $connect->set_charset('utf8mb4');
         $tableCheck = $connect->query("SHOW TABLES LIKE 'admin'");
-        if ($tableCheck && $tableCheck->num_rows > 0) {
-            $result = $connect->query("SELECT COUNT(*) as cnt FROM admin");
-            $countRow = $result ? $result->fetch_assoc() : ['cnt' => 0];
-            $count = (int)($countRow['cnt'] ?? 0);
-            if ($count == 0) {
-                $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `rule`) VALUES (?, 'admin', '14e9eab674', 'administrator')");
-                if ($stmt) {
-                    $stmt->bind_param('s', $adminNumber);
-                    $stmt->execute();
-                    $stmt->close();
-                }
-            } else {
-                $adminNumberEscaped = $connect->real_escape_string($adminNumber);
-                $connect->query("UPDATE `admin` SET `id_admin` = '{$adminNumberEscaped}', `username` = 'admin', `password` = '14e9eab674', `rule` = 'administrator' LIMIT 1");
-            }
-        } else {
-            $connect->query("CREATE TABLE `admin` (
+        if (!$tableCheck || $tableCheck->num_rows === 0) {
+            $created = $connect->query("CREATE TABLE `admin` (
               `id_admin` varchar(500) NOT NULL,
-              `username` varchar(1000) NOT NULL,
-              `password` varchar(1000) NOT NULL,
+              `username` varchar(200) NOT NULL,
+              `password` varchar(255) NOT NULL,
               `rule` varchar(500) NOT NULL,
               PRIMARY KEY (`id_admin`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci");
-            $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `rule`) VALUES (?, 'admin', '14e9eab674', 'administrator')");
-            if ($stmt) {
-                $stmt->bind_param('s', $adminNumber);
-                $stmt->execute();
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            if (!$created) {
+                error_log('[installer] admin table creation failed: ' . $connect->error);
+                $connect->close();
+                return ['ok' => false, 'configured' => false];
+            }
+        }
+
+        $countResult = $connect->query("SELECT COUNT(*) AS cnt FROM `admin`");
+        $countRow = $countResult ? $countResult->fetch_assoc() : ['cnt' => 0];
+        $count = (int) ($countRow['cnt'] ?? 0);
+        $hash = password_hash((string) $adminPassword, PASSWORD_DEFAULT);
+        $configured = false;
+
+        if ($count === 0) {
+            $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `rule`) VALUES (?, ?, ?, 'administrator')");
+            $stmt->bind_param('sss', $adminNumber, $adminUsername, $hash);
+            $configured = $stmt->execute();
+            $stmt->close();
+        } else {
+            // Only replace the migration placeholder created by this project;
+            // never overwrite an existing administrator during a rerun.
+            $pending = $connect->query("SELECT id_admin, password FROM `admin` ORDER BY id_admin LIMIT 1");
+            $pendingRow = $pending ? $pending->fetch_assoc() : null;
+            if (is_array($pendingRow) && (string) ($pendingRow['password'] ?? '') === '__HAMOIX_INSTALL_PENDING__') {
+                $stmt = $connect->prepare("UPDATE `admin` SET `username` = ?, `password` = ?, `rule` = 'administrator' WHERE `id_admin` = ? LIMIT 1");
+                $stmt->bind_param('sss', $adminUsername, $hash, $pendingRow['id_admin']);
+                $configured = $stmt->execute();
                 $stmt->close();
             }
         }
+        $ok = $connect->errno === 0;
+        if (!$ok) {
+            error_log('[installer] admin setup failed: ' . $connect->error);
+        }
         $connect->close();
-        return true;
-    } catch (Exception $e) {
-        return false;
+        return ['ok' => $ok, 'configured' => $configured];
+    } catch (Throwable $e) {
+        error_log('[installer] admin setup failed: ' . $e->getMessage());
+        return ['ok' => false, 'configured' => false];
     }
 }
 ?>
@@ -1056,6 +1125,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                      install type are fixed and submitted as hidden values. -->
                 <input type="hidden" name="server_type" value="cpanel">
                 <input type="hidden" name="install_type" value="simple">
+                <input type="hidden" name="_csrf" value="<?php echo escapeHtml($installerCsrf); ?>">
 
                 
                 <section class="step-section is-active" id="step-1" aria-labelledby="step-3-title">
@@ -1075,7 +1145,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                         <div class="field-step <?php echo $currentInstallField === 2 ? 'is-active' : ''; ?>" data-field-step="2">
                             <div class="form-field">
                                 <label class="form-label" for="database_password"><svg><use href="#i-lock"/></svg> رمز عبور دیتابیس</label>
-                                <input class="form-input" type="password" id="database_password" name="database_password" placeholder="DATABASE PASSWORD" value="<?php echo escapeHtml($uPOST['database_password'] ?? ''); ?>" autocomplete="new-password" required>
+                                <input class="form-input" type="password" id="database_password" name="database_password" placeholder="DATABASE PASSWORD" value="" autocomplete="new-password" required>
                             </div>
                         </div>
 
@@ -1092,6 +1162,21 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                                 <div>
                                     <strong>هشدار:</strong> پس از نصب موفقیت‌آمیز، پوشه‌ی <code>installer</code> به‌صورت <strong>خودکار حذف</strong> خواهد شد.
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="field-step <?php echo $currentInstallField === 5 ? 'is-active' : ''; ?>" data-field-step="5">
+                            <div class="form-field">
+                                <label class="form-label" for="admin_username"><svg><use href="#i-user"/></svg> نام کاربری مدیر</label>
+                                <input class="form-input" type="text" id="admin_username" name="admin_username" placeholder="admin" value="<?php echo escapeHtml($uPOST['admin_username'] ?? 'admin'); ?>" autocomplete="username" required pattern="[A-Za-z0-9_.-]{3,64}">
+                            </div>
+                        </div>
+
+                        <div class="field-step <?php echo $currentInstallField === 6 ? 'is-active' : ''; ?>" data-field-step="6">
+                            <div class="form-field">
+                                <label class="form-label" for="admin_password"><svg><use href="#i-key"/></svg> رمز عبور مدیر</label>
+                                <input class="form-input" type="password" id="admin_password" name="admin_password" placeholder="حداقل ۱۲ کاراکتر" autocomplete="new-password" required minlength="12">
+                                <p class="form-hint">از رمز یکتا و طولانی استفاده کنید؛ این رمز در دیتابیس به‌صورت hash ذخیره می‌شود.</p>
                             </div>
                         </div>
 

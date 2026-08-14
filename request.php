@@ -75,14 +75,12 @@ class CurlRequest {
         curl_setopt($ch, CURLOPT_TCP_KEEPINTVL, 30);
 
 
-        $verifyTls = defined('BOT_CURL_VERIFY_TLS') && BOT_CURL_VERIFY_TLS === true;
-        if ($verifyTls) {
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        } else {
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-        }
+        // TLS verification must be enabled by default: this client carries
+        // panel bearer tokens and API keys. A deliberate, explicit false is
+        // required for legacy self-signed deployments.
+        $verifyTls = !defined('BOT_CURL_VERIFY_TLS') || BOT_CURL_VERIFY_TLS !== false;
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $verifyTls);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $verifyTls ? 2 : 0);
 
         if (function_exists('hamoix_apply_curl_proxy')) {
             hamoix_apply_curl_proxy($ch, 'panel');
@@ -109,10 +107,10 @@ class CurlRequest {
             $error = curl_error($ch);
             $host = parse_url($this->url, PHP_URL_HOST);
             $port = parse_url($this->url, PHP_URL_PORT);
-            $dedupKey = 'curlerr|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $error;
+            $dedupKey = 'curlerr|' . ($host ?: '(unknown-host)') . ':' . ($port ?: '') . '|' . $error;
             hamoix_dedup_error_log(
                 $dedupKey,
-                sprintf('CurlRequest error calling %s: %s (HTTP code: %s)', $this->url, $error, var_export($httpCode, true))
+                sprintf('CurlRequest error calling %s: %s (HTTP code: %s)', $host ?: '(unknown-host)', $error, var_export($httpCode, true))
             );
             curl_close($ch);
             return [
@@ -128,10 +126,10 @@ class CurlRequest {
         if ($httpCode === 0 || $httpCode >= 500 || ($rxLogAll && $httpCode >= 400)) {
             $host = parse_url($this->url, PHP_URL_HOST);
             $port = parse_url($this->url, PHP_URL_PORT);
-            $dedupKey = 'curlhttp|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $httpCode;
+            $dedupKey = 'curlhttp|' . ($host ?: '(unknown-host)') . ':' . ($port ?: '') . '|' . $httpCode;
             hamoix_dedup_error_log(
                 $dedupKey,
-                sprintf('CurlRequest call to %s returned HTTP code %s', $this->url, var_export($httpCode, true))
+                sprintf('CurlRequest call to %s returned HTTP code %s', $host ?: '(unknown-host)', var_export($httpCode, true))
             );
         }
 

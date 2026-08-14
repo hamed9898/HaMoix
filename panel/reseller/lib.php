@@ -17,8 +17,19 @@ if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
 }
 
 if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.use_strict_mode', '1');
     ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_samesite', 'Lax');
+    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
     session_start();
+    unset($secure);
 }
 
 require_once __DIR__ . '/../../config.php';
@@ -194,7 +205,8 @@ if (!function_exists('reseller_verify_password')) {
         if ($hash === '') {
             return false;
         }
-        // Stored as password_hash() output; tolerate a legacy plaintext value.
+        // Stored as password_hash() output; legacy plaintext is accepted only
+        // long enough for the login handler to migrate it.
         if (password_verify($plain, $hash)) {
             return true;
         }

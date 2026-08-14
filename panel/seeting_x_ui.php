@@ -2,6 +2,23 @@
 session_start();
 require_once __DIR__ . '/../config.php';
 
+$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
+$query->bindValue(':username', $_SESSION['user'] ?? '', PDO::PARAM_STR);
+$query->execute();
+$result = $query->fetch(PDO::FETCH_ASSOC);
+if (!isset($_SESSION['user']) || !$result) {
+    header('Location: login.php');
+    exit;
+}
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$_csrf = $_SESSION['csrf_token'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !hash_equals((string) $_csrf, (string) ($_POST['_csrf'] ?? ''))) {
+    http_response_code(403);
+    exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+}
+
 function ensureXuiTableExists(PDO $pdo)
 {
     try {
@@ -45,7 +62,13 @@ function synchronizeXuiPanels(PDO $pdo)
 synchronizeXuiPanels($pdo);
 
 function update($table, $field, $newValue, $whereField = null, $whereValue = null) {
-    global $pdo,$user;
+    global $pdo;
+    $allowed = [
+        'x_ui' => ['setting' => ['codepanel']],
+    ];
+    if (!isset($allowed[$table][$field]) || ($whereField !== null && !in_array($whereField, $allowed[$table][$field], true))) {
+        throw new InvalidArgumentException('شناسه‌ی به‌روزرسانی نامعتبر است');
+    }
 
     if ($whereField !== null) {
         $stmt = $pdo->prepare("SELECT $field FROM $table WHERE $whereField = ? FOR UPDATE");
@@ -58,25 +81,13 @@ function update($table, $field, $newValue, $whereField = null, $whereValue = nul
         $stmt->execute([$newValue]);
     }
     $date = date("Y-m-d");
-    $logss = "{$table}_{$field}_{$newValue}_{$whereField}_{$whereValue}_{$user['step']}_$date";
-    if($field != "message_count" || $field != "last_message_time"){
-        file_put_contents('log.txt',"\n".$logss,FILE_APPEND);
-    }
+    $logss = "{$table}_{$field}_{$whereField}_{$whereValue}_$date";
+    file_put_contents(__DIR__ . '/../log.txt', "\n" . $logss, FILE_APPEND | LOCK_EX);
 }
-
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
 
 $query = $pdo->prepare("SELECT code_panel, name_panel FROM marzban_panel ORDER BY name_panel");
 $query->execute();
 $resultpanel = $query->fetchAll(PDO::FETCH_ASSOC);
-
-if( !isset($_SESSION["user"]) || !$result ){
-    header('Location: login.php');
-    return;
-}
 
 $action = $_GET['action'] ?? '';
 $selectedPanelCode = '';
@@ -85,7 +96,12 @@ $settingsValue = '';
 if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST'){
     $selectedPanelCode = $_POST['namepanel'] ?? '';
     $settingsValue = $_POST['settings'] ?? '';
-    if ($selectedPanelCode !== '') {
+    if ($selectedPanelCode !== '' && mb_strlen($settingsValue) <= 200000) {
+        $decodedSettings = json_decode($settingsValue, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decodedSettings)) {
+            http_response_code(422);
+            exit('تنظیمات JSON نامعتبر است');
+        }
         $stmt = $pdo->prepare("SELECT 1 FROM x_ui WHERE codepanel = :codepanel");
         $stmt->execute([':codepanel' => $selectedPanelCode]);
         if ($stmt->fetchColumn() === false) {
@@ -216,7 +232,8 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
             <form class="xui-form" role="form" method="POST" action="seeting_x_ui.php?action=change">
               <div class="xui-field">
                 <label>نام پنل</label>
-                <select required name="namepanel" class="xui-select">
+                <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+              <select required name="namepanel" class="xui-select">
                   <option value="">انتخاب نشده</option>
                   <?php
                   if(!empty($resultpanel)){
@@ -261,6 +278,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
 
             <form class="xui-form" role="form" method="POST" action="seeting_x_ui.php?action=save">
               <div class="xui-field">
+                <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                 <label>تنظیمات (JSON)</label>
                 <textarea id="settings" name="settings" class="xui-textarea" rows="22"><?php echo $settingsValueForTextarea; ?></textarea>
                 <input name="namepanel" type="hidden" value="<?php echo $sanitizedPanelCode; ?>">
@@ -350,7 +368,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
       "http/1.1"
     ],
     "settings": {
-      "allowInsecure": true,
+      "allowInsecure": false,
       "fingerprint": ""
     }
   },

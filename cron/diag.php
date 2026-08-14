@@ -49,8 +49,10 @@ function rx_diag_curl(string $url, ?string $resolveTo = null): array
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_TIMEOUT        => 8,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => 0,
+        // Diagnostics should not silently disable certificate validation.
+        // Self-signed deployments can explicitly opt out in config.php.
+        CURLOPT_SSL_VERIFYPEER => !defined('BOT_CURL_VERIFY_TLS') || BOT_CURL_VERIFY_TLS !== false,
+        CURLOPT_SSL_VERIFYHOST => (!defined('BOT_CURL_VERIFY_TLS') || BOT_CURL_VERIFY_TLS !== false) ? 2 : 0,
         CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_NOSIGNAL       => true,
     ];

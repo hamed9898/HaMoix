@@ -22,6 +22,11 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    hamoix_csrf_check();
+}
+$discountCsrf = hamoix_csrf_token();
+
 $flash = ['ok' => '', 'err' => ''];
 
 
@@ -125,7 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $flash['ok'] = 'کد تخفیف افزوده شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'خطا: ' . $e->getMessage();
+                $flash['err'] = 'عملیات ناموفق بود. جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/discounts] operation failed: ' . $e->getMessage());
             }
         }
     }
@@ -176,7 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $flash['ok'] = 'کد هدیه افزوده شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'خطا: ' . $e->getMessage();
+                $flash['err'] = 'عملیات ناموفق بود. جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/discounts] operation failed: ' . $e->getMessage());
             }
         }
     }
@@ -187,7 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("DELETE FROM Discount WHERE id = :id")->execute([':id' => $id]);
                 $flash['ok'] = 'کد هدیه حذف شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف ناموفق بود. جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/discounts] delete failed: ' . $e->getMessage());
             }
         }
     }
@@ -198,7 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("DELETE FROM DiscountSell WHERE id = :id")->execute([':id' => $id]);
                 $flash['ok'] = 'کد تخفیف حذف شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف ناموفق بود. جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/discounts] delete failed: ' . $e->getMessage());
             }
         }
     }
@@ -209,7 +218,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE DiscountSell SET usedDiscount = '0' WHERE id = :id")->execute([':id' => $id]);
                 $flash['ok'] = 'شمارنده استفاده صفر شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'بازنشانی ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'بازنشانی ناموفق بود. جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/discounts] reset failed: ' . $e->getMessage());
             }
         }
     }
@@ -221,7 +231,8 @@ try {
     $r = $pdo->query("SELECT * FROM DiscountSell ORDER BY id DESC");
     if ($r) $list = $r->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) {
-    $flash['err'] = 'بارگذاری ناموفق: ' . $e->getMessage();
+    $flash['err'] = 'بارگذاری ناموفق بود. جزئیات در لاگ سرور ثبت شد.';
+    error_log('[panel/discounts] load failed: ' . $e->getMessage());
 }
 
 $giftList = [];
@@ -378,6 +389,7 @@ function hamoix_d_label_section($s) {
                                 <td data-label="عملیات" class="cell-actions">
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
                                         <form method="POST" style="display:inline" onsubmit="return confirm('شمارنده استفاده این کد صفر شود؟');">
+                                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($discountCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="reset_usage">
                                             <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-warning" title="بازنشانی شمارنده استفاده">
@@ -385,6 +397,7 @@ function hamoix_d_label_section($s) {
                                             </button>
                                         </form>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('کد <?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?> حذف شود؟');">
+                                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($discountCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="delete">
                                             <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-danger">
@@ -432,6 +445,7 @@ function hamoix_d_label_section($s) {
                                 <td data-label="اختصاصی"><?php echo $gtarget !== '' ? '<span class="badge badge-warning">کاربر ' . htmlspecialchars($gtarget, ENT_QUOTES) . '</span>' : '<span class="text-muted">عمومی</span>'; ?></td>
                                 <td data-label="عملیات" class="cell-actions">
                                     <form method="POST" style="display:inline" onsubmit="return confirm('کد هدیه حذف شود؟');">
+                                        <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($discountCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                                         <input type="hidden" name="_action" value="gift_delete">
                                         <input type="hidden" name="id" value="<?php echo (int)$g['id']; ?>">
                                         <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo icon('trash', 'svg-icon'); ?></button>
@@ -452,6 +466,7 @@ function hamoix_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-discount')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
+            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($discountCsrf, ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="_action" value="add">
 
             <div class="form-row">
@@ -543,6 +558,7 @@ function hamoix_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-gift')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
+            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($discountCsrf, ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="_action" value="gift_add">
             <div class="form-row">
                 <div class="form-group">

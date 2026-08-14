@@ -22,6 +22,11 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    hamoix_csrf_check();
+}
+$stockCsrf = hamoix_csrf_token();
+
 
 $tables = ['nm_stock_shelves' => false, 'nm_config_stock' => false];
 foreach ($tables as $t => $_) {
@@ -138,7 +143,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     $flash['ok'] = 'انبار جدید ثبت شد.';
                 } catch (\Throwable $e) {
-                    $flash['err'] = 'افزودن ناموفق: ' . $e->getMessage();
+                    $flash['err'] = 'افزودن ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                    error_log('[panel/stock] add failed: ' . $e->getMessage());
                 }
             }
         }
@@ -155,7 +161,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([':s' => $newStatus, ':u' => time(), ':id' => $id]);
                 $flash['ok'] = $newStatus === 'active' ? 'انبار فعال شد.' : 'انبار غیرفعال شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'تغییر ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'تغییر ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] update failed: ' . $e->getMessage());
             }
         }
     }
@@ -176,7 +183,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $flash['ok'] = 'انبار و کانفیگ‌های آن حذف شد.';
                 }
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] delete failed: ' . $e->getMessage());
             }
         }
     }
@@ -305,7 +313,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $flash['ok'] = 'کانفیگ غیرفعال شد.';
                 }
             } catch (\Throwable $e) {
-                $flash['err'] = 'تغییر ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'تغییر ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] update failed: ' . $e->getMessage());
             }
         }
         if ($shelfId > 0) { header('Location: stock.php?shelf=' . $shelfId); exit; }
@@ -323,7 +332,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $del->execute([':id' => $configId]);
                 $flash['ok'] = $del->rowCount() > 0 ? 'کانفیگ برای همیشه از دیتابیس حذف شد.' : 'کانفیگ پیدا نشد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] delete failed: ' . $e->getMessage());
             }
         }
         $redir = 'stock.php?shelf=' . $shelfId;
@@ -347,7 +357,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $flash['ok'] = $stmt->rowCount() . ' کانفیگ برای همیشه از دیتابیس حذف شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] delete failed: ' . $e->getMessage());
             }
             header('Location: stock.php?shelf=' . $shelfId . '&cstatus=' . urlencode($cfgFilter));
             exit;
@@ -362,7 +373,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([':id' => $shelfId]);
                 $flash['ok'] = $stmt->rowCount() . ' کانفیگ فعال غیرفعال شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'تغییر ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'تغییر ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] update failed: ' . $e->getMessage());
             }
             header('Location: stock.php?shelf=' . $shelfId);
             exit;
@@ -378,7 +390,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([':id' => $shelfId]);
                 $flash['ok'] = $stmt->rowCount() . ' کانفیگ غیرفعال برای همیشه پاک شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'پاکسازی ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'پاکسازی ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] purge failed: ' . $e->getMessage());
             }
             header('Location: stock.php?shelf=' . $shelfId);
             exit;
@@ -395,7 +408,8 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([':id' => $configId]);
                 $flash['ok'] = 'کانفیگ فعال شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'تغییر ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'تغییر ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+                error_log('[panel/stock] update failed: ' . $e->getMessage());
             }
         }
         if ($shelfId > 0) { header('Location: stock.php?shelf=' . $shelfId); exit; }
@@ -434,7 +448,8 @@ if (!$tableMissing) {
         $r = $pdo->query("SELECT * FROM nm_stock_shelves ORDER BY id DESC");
         if ($r) $shelves = $r->fetchAll(PDO::FETCH_ASSOC);
     } catch (\Throwable $e) {
-        $flash['err'] = $flash['err'] ?: 'بارگذاری ناموفق: ' . $e->getMessage();
+        $flash['err'] = $flash['err'] ?: 'بارگذاری ناموفق بود؛ جزئیات در لاگ سرور ثبت شد.';
+        error_log('[panel/stock] load failed: ' . $e->getMessage());
     }
     if ($viewShelfId > 0) {
         foreach ($shelves as $sh) {
@@ -640,6 +655,7 @@ function hamoix_stock_status_label(string $s): array {
                                         </form>
                                     <?php elseif ($cfgStatus === 'disabled'): ?>
                                         <form method="POST" action="stock.php" style="display:inline">
+                                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($stockCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="restore_config">
                                             <input type="hidden" name="config_id" value="<?php echo (int)$cfg['id']; ?>">
                                             <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
@@ -842,6 +858,7 @@ function hamoix_stock_status_label(string $s): array {
                                             مدیریت کانفیگ‌ها
                                         </a>
                                         <form method="POST" action="stock.php" style="display:inline">
+                                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($stockCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="toggle_shelf">
                                             <input type="hidden" name="id" value="<?php echo $sid; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-warning" title="فعال/غیرفعال">
@@ -870,6 +887,7 @@ function hamoix_stock_status_label(string $s): array {
                             <button type="button" class="modal-close" onclick="closeModal('modal-add-shelf')">&times;</button>
                         </div>
                         <form method="POST" action="stock.php">
+                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($stockCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                             <input type="hidden" name="_action" value="add_shelf">
 
                             <div class="form-group">
@@ -953,6 +971,18 @@ function hamoix_stock_status_label(string $s): array {
 </section>
 
 <script>
+(function () {
+    var token = <?php echo json_encode($stockCsrf); ?>;
+    document.querySelectorAll('form[method="POST"], form[method="post"]').forEach(function (form) {
+        if (!form.querySelector('input[name="_csrf"]')) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = '_csrf';
+            input.value = token;
+            form.appendChild(input);
+        }
+    });
+})();
 function openModal(id) { var m = document.getElementById(id); if (m) m.classList.add('active'); }
 function closeModal(id) { var m = document.getElementById(id); if (m) m.classList.remove('active'); }
 

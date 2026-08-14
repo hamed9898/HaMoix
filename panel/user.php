@@ -15,11 +15,37 @@ if (!isset($_SESSION["user"]) || !$result) {
     return;
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$_csrf = $_SESSION['csrf_token'];
+$_has_action = isset($_GET['status']) || isset($_GET['priceadd']) ||
+               isset($_GET['pricelow']) || isset($_GET['agent']) ||
+               isset($_GET['textmessage']);
+if ($_has_action || ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action']))) {
+    $incomingCsrf = $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? (string) ($_POST['_csrf'] ?? '')
+        : (string) ($_GET['_csrf'] ?? '');
+    if (!hash_equals((string) $_csrf, $incomingCsrf)) {
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+    }
+}
 
+
+$targetId = trim((string) ($_GET['id'] ?? ''));
+if ($targetId === '' || !ctype_digit($targetId)) {
+    http_response_code(400);
+    exit('شناسه کاربر نامعتبر است');
+}
 $query = $pdo->prepare("SELECT * FROM user WHERE id=:id");
-$query->bindParam("id", $_GET["id"], PDO::PARAM_STR);
+$query->bindValue(':id', $targetId, PDO::PARAM_STR);
 $query->execute();
 $user = $query->fetch(PDO::FETCH_ASSOC);
+if (!$user) {
+    http_response_code(404);
+    exit('کاربر یافت نشد');
+}
 
 $setting        = select("setting", "*", null, null);
 
@@ -108,7 +134,12 @@ try {
 
 
 if (isset($_GET['status']) and $_GET['status']) {
-    if ($_GET['status'] == "block") {
+    $requestedStatus = (string) $_GET['status'];
+    if (!in_array($requestedStatus, ['active', 'block'], true)) {
+        http_response_code(400);
+        exit('وضعیت نامعتبر است');
+    }
+    if ($requestedStatus == "block") {
         $textblok = "کاربر با آیدی عددی {$_GET['id']} در ربات مسدود گردید \n\nادمین مسدود کننده : پنل تحت وب\nنام کاربری : {$_SESSION['user']}";
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
@@ -121,13 +152,18 @@ if (isset($_GET['status']) and $_GET['status']) {
     } else {
         sendmessage($_GET['id'], "✳️ حساب کاربری شما از مسدودی خارج شد ✳️\nاکنون میتوانید از ربات استفاده کنید ", null, 'HTML');
     }
-    update("user", "User_Status", $_GET['status'], "id", $_GET['id']);
+    update("user", "User_Status", $requestedStatus, "id", $_GET['id']);
     header("Location: user.php?id={$_GET['id']}");
     exit;
 }
 
 if (isset($_GET['priceadd']) and $_GET['priceadd']) {
-    $priceadd = number_format($_GET['priceadd'], 0);
+    $priceaddValue = filter_var($_GET['priceadd'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($priceaddValue === false) {
+        http_response_code(400);
+        exit('مبلغ نامعتبر است');
+    }
+    $priceadd = number_format($priceaddValue, 0);
     $textadd  = "💎 کاربر عزیز مبلغ {$priceadd} تومان به موجودی کیف پول تان اضافه گردید.";
     sendmessage($_GET['id'], $textadd, null, 'HTML');
     if (strlen($setting['Channel_Report']) > 0) {
@@ -139,14 +175,19 @@ if (isset($_GET['priceadd']) and $_GET['priceadd']) {
             'parse_mode'        => "HTML"
         ]);
     }
-    $value = intval($user['Balance']) + intval($_GET['priceadd']);
+    $value = intval($user['Balance']) + $priceaddValue;
     update("user", "Balance", $value, "id", $_GET['id']);
     header("Location: user.php?id={$_GET['id']}");
     exit;
 }
 
 if (isset($_GET['pricelow']) and $_GET['pricelow']) {
-    $pricelow = number_format($_GET['pricelow'], 0);
+    $pricelowValue = filter_var($_GET['pricelow'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($pricelowValue === false) {
+        http_response_code(400);
+        exit('مبلغ نامعتبر است');
+    }
+    $pricelow = number_format($pricelowValue, 0);
     if (strlen($setting['Channel_Report']) > 0) {
         $textlowbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب کسر کرده است :\n\n🪪 ادمین : {$_SESSION['user']}\n👤 کاربر : {$_GET['id']}\nمبلغ کسر شده : $pricelow";
         telegram('sendmessage', [
@@ -156,23 +197,35 @@ if (isset($_GET['pricelow']) and $_GET['pricelow']) {
             'parse_mode'        => "HTML"
         ]);
     }
-    $value = intval($user['Balance']) - intval($_GET['pricelow']);
+    $value = intval($user['Balance']) - $pricelowValue;
     update("user", "Balance", $value, "id", $_GET['id']);
     header("Location: user.php?id={$_GET['id']}");
     exit;
 }
 
 if (isset($_GET['agent']) and $_GET['agent']) {
-    update("user", "agent", $_GET['agent'], "id", $_GET['id']);
+    $requestedAgent = (string) $_GET['agent'];
+    if (!in_array($requestedAgent, ['f', 'n', 'n2'], true)) {
+        http_response_code(400);
+        exit('سطح کاربری نامعتبر است');
+    }
+    update("user", "agent", $requestedAgent, "id", $_GET['id']);
     header("Location: user.php?id={$_GET['id']}");
     exit;
 }
 
 if (isset($_GET['textmessage']) and $_GET['textmessage']) {
-    $messagetext = "📥 یک پیام از مدیریت برای شما ارسال شد.\n\nمتن پیام : {$_GET['textmessage']}";
+    $messageInput = trim((string) $_GET['textmessage']);
+    $messageInput = preg_replace('/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/u', '', $messageInput);
+    if (mb_strlen($messageInput, 'UTF-8') > 2000) {
+        http_response_code(400);
+        exit('متن پیام بیش از حد طولانی است');
+    }
+    $safeMessageInput = htmlspecialchars($messageInput, ENT_QUOTES, 'UTF-8');
+    $messagetext = "📥 یک پیام از مدیریت برای شما ارسال شد.\n\nمتن پیام : {$safeMessageInput}";
     sendmessage($_GET['id'], $messagetext, null, 'HTML');
     if (strlen($setting['Channel_Report']) > 0) {
-        $textmsg = "📌 پیام مدیریت ارسال شد\n\n🪪 ادمین : {$_SESSION['user']}\n👤 گیرنده : {$_GET['id']}\nمتن : {$_GET['textmessage']}";
+        $textmsg = "📌 پیام مدیریت ارسال شد\n\n🪪 ادمین : {$_SESSION['user']}\n👤 گیرنده : {$_GET['id']}\nمتن : {$safeMessageInput}";
         telegram('sendmessage', [
             'chat_id'           => $setting['Channel_Report'],
             'message_thread_id' => $otherservice,
@@ -188,25 +241,6 @@ if (isset($_GET['textmessage']) and $_GET['textmessage']) {
 $status_label   = ($user['User_Status'] == 'block') ? 'مسدود' : 'فعال';
 $status_class   = ($user['User_Status'] == 'block') ? 'badge-danger' : 'badge-success';
 $number_display = ($user['number'] == "none") ? 'ثبت نشده' : htmlspecialchars($user['number'], ENT_QUOTES, 'UTF-8');
-
-
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = $_SESSION['csrf_token'];
-
-
-$_has_action = isset($_GET['status']) || isset($_GET['priceadd']) ||
-               isset($_GET['pricelow']) || isset($_GET['agent']) ||
-               isset($_GET['textmessage']);
-if ($_has_action) {
-    $incoming_csrf = $_GET['_csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $incoming_csrf)) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
-}
-
 
 $agent_types = [
     'f'  => 'کاربر عادی',

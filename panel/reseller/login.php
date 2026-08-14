@@ -24,11 +24,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'نام کاربری یا رمز عبور خالی است.';
         } else {
             $row = reseller_find_by_username($username);
-            if (!$row || !reseller_verify_password($password, (string) ($row['password'] ?? ''))) {
+            $storedPassword = is_array($row) ? (string) ($row['password'] ?? '') : '';
+            $passwordValid = $row && reseller_verify_password($password, $storedPassword);
+            if (!$passwordValid) {
                 $error = 'نام کاربری یا رمز عبور اشتباه است!';
             } elseif ((string) ($row['status'] ?? '') !== 'active') {
                 $error = 'حساب نمایندگی شما غیرفعال است. با مدیر تماس بگیرید.';
             } else {
+                if (!preg_match('/^\$(2y|argon2i|argon2id)\$/', $storedPassword)) {
+                    try {
+                        $upgrade = $pdo->prepare('UPDATE reseller SET password = :password WHERE id = :id');
+                        $upgrade->execute([
+                            ':password' => password_hash($password, PASSWORD_DEFAULT),
+                            ':id' => (int) $row['id'],
+                        ]);
+                    } catch (\Throwable $e) {
+                        error_log('[reseller] password migration failed: ' . $e->getMessage());
+                    }
+                }
                 session_regenerate_id(true);
                 $_SESSION['reseller_id'] = (int) $row['id'];
                 $_SESSION['reseller_username'] = (string) $row['username'];

@@ -365,15 +365,14 @@ try {
         password varchar(1000) NOT NULL,
         rule varchar(500) NOT NULL)");
         $stmt->execute();
-        $randomString = bin2hex(random_bytes(5));
-
-
+        // The installer replaces this marker with the administrator's chosen
+        // password hash. Never seed a usable plaintext/default credential.
         $stmt = $pdo->prepare("INSERT INTO admin (id_admin, rule, username, password) VALUES (:id, :rule, :username, :password)");
         $stmt->execute([
             ':id'       => '0',
             ':rule'     => 'administrator',
             ':username' => 'admin',
-            ':password' => $randomString,
+            ':password' => '__HAMOIX_INSTALL_PENDING__',
         ]);
     } else {
         addFieldToTable("admin", "rule", "administrator", "VARCHAR(200)");

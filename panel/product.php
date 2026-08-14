@@ -14,6 +14,20 @@ if (!isset($_SESSION["user"]) || !$result) {
     return;
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$_csrf = $_SESSION['csrf_token'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['removeid']) || isset($_GET['oneproduct'], $_GET['toweproduct'])) {
+    $incomingCsrf = $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? (string) ($_POST['_csrf'] ?? '')
+        : (string) ($_GET['_csrf'] ?? '');
+    if (!hash_equals((string) $_csrf, $incomingCsrf)) {
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+    }
+}
+
 $query = $pdo->prepare("SELECT * FROM product ORDER BY id ASC");
 $query->execute();
 $listinvoice = $query->fetchAll();
@@ -70,17 +84,28 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 
 
 if (isset($_GET['oneproduct'], $_GET['toweproduct']) && $_GET['oneproduct'] !== '' && $_GET['toweproduct'] !== '') {
-    update("product", "id", 10000, "id", $_GET['oneproduct']);
-    update("product", "id", intval($_GET['oneproduct']),  "id", intval($_GET['toweproduct']));
-    update("product", "id", intval($_GET['toweproduct']), "id", 10000);
+    $firstProductId = filter_var($_GET['oneproduct'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $secondProductId = filter_var($_GET['toweproduct'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($firstProductId === false || $secondProductId === false || $firstProductId === $secondProductId) {
+        http_response_code(400);
+        exit('شناسه محصولات نامعتبر است');
+    }
+    update("product", "id", 10000, "id", $firstProductId);
+    update("product", "id", $firstProductId,  "id", $secondProductId);
+    update("product", "id", $secondProductId, "id", 10000);
     header("Location: product.php");
     exit;
 }
 
 
 if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
+    $productId = filter_var($_GET['removeid'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($productId === false) {
+        http_response_code(400);
+        exit('شناسه محصول نامعتبر است');
+    }
     $stmt = $pdo->prepare("DELETE FROM product WHERE id = :id");
-    $stmt->bindParam(':id', $_GET['removeid']);
+    $stmt->bindValue(':id', $productId, PDO::PARAM_INT);
     $stmt->execute();
     header("Location: product.php");
     exit;
@@ -160,7 +185,7 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
                                         <a href="productedit.php?id=<?php echo $list['id']; ?>" class="btn btn-sm btn-soft-info" title="ویرایش">
                                             <?php echo icon('pen', 'svg-icon'); ?>
                                         </a>
-                                        <a href="product.php?removeid=<?php echo $list['id']; ?>" class="btn btn-sm btn-soft-danger" title="حذف"
+                                        <a href="product.php?removeid=<?php echo (int) $list['id']; ?>&_csrf=<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-soft-danger" title="حذف"
                                            onclick="return confirm('آیا از حذف این محصول مطمئن هستید؟')">
                                             <?php echo icon('trash', 'svg-icon'); ?>
                                         </a>
@@ -185,6 +210,7 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
             <button class="modal-close" onclick="closeModal('modal-add-product')">&times;</button>
         </div>
         <form action="product.php" method="POST">
+            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
             <div class="form-group">
                 <label class="form-label">نام محصول</label>
                 <input type="text" name="nameproduct" class="form-control" placeholder="نام محصول را وارد کنید" required>
@@ -263,6 +289,7 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
             <button class="modal-close" onclick="closeModal('modal-move-product')">&times;</button>
         </div>
         <form action="product.php" method="GET">
+            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
             <div class="form-group">
                 <label class="form-label">شناسه محصول اول</label>
                 <input type="number" name="oneproduct" class="form-control" required>

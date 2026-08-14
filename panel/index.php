@@ -24,14 +24,11 @@ register_shutdown_function(static function () {
         http_response_code(500);
         header('Content-Type: text/html; charset=utf-8');
     }
-    $msg = htmlspecialchars(
-        $err['message'] . ' @ ' . basename((string)$err['file']) . ':' . (int)$err['line'],
-        ENT_QUOTES, 'UTF-8'
-    );
+    error_log('[hamoix] fatal error in admin dashboard: ' . $err['message'] . ' @ ' . $err['file'] . ':' . $err['line']);
     echo '<!DOCTYPE html><html lang="fa" dir="rtl"><meta charset="utf-8">'
        . '<title>خطای سرور</title>'
        . '<body style="font-family:sans-serif;background:#0a0a0f;color:#f1f3f8;padding:32px;">'
-       . '<h2>خطای داخلی سرور</h2><pre style="white-space:pre-wrap">' . $msg . '</pre>'
+       . '<h2>خطای داخلی سرور</h2><p>خطایی رخ داد. لطفاً لاگ سرور را بررسی کنید.</p>'
        . '<p><a style="color:#3b82f6" href="login.php">بازگشت به ورود</a></p>'
        . '</body></html>';
 });
@@ -160,7 +157,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'chart') {
         echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE);
     } catch (\Throwable $e) {
         http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        error_log('[hamoix] chart request failed: ' . $e->getMessage());
+        echo json_encode(['ok' => false, 'error' => 'خطای داخلی']);
     }
     exit;
 }

@@ -16,19 +16,27 @@ register_shutdown_function(static function () {
         http_response_code(500);
         header('Content-Type: text/html; charset=utf-8');
     }
-    $msg = htmlspecialchars(
-        $err['message'] . ' @ ' . basename((string)$err['file']) . ':' . (int)$err['line'],
-        ENT_QUOTES, 'UTF-8'
-    );
+    error_log('[hamoix] fatal error in admin login: ' . $err['message'] . ' @ ' . $err['file'] . ':' . $err['line']);
     echo '<!DOCTYPE html><html lang="fa" dir="rtl"><meta charset="utf-8">'
        . '<title>خطای سرور</title>'
        . '<body style="font-family:sans-serif;background:#0a0a0f;color:#f1f3f8;padding:32px;">'
-       . '<h2>خطای داخلی سرور</h2><pre style="white-space:pre-wrap">' . $msg . '</pre>'
+       . '<h2>خطای داخلی سرور</h2><p>خطایی رخ داد. لطفاً لاگ سرور را بررسی کنید.</p>'
        . '</body></html>';
 });
 
+ini_set('session.use_strict_mode', '1');
 ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_samesite', 'Lax');
+$__sessionSecure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $__sessionSecure,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
+unset($__sessionSecure);
 if (isset($_GET['logout'])) {
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
@@ -42,6 +50,8 @@ if (isset($_GET['logout'])) {
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../function.php';
+
+$loginCsrf = hamoix_csrf_token();
 
 $allowed_ips = select("setting","*",null,null,"select");
 $user_ip = $_SERVER['REMOTE_ADDR'] ?? '';
@@ -70,7 +80,7 @@ $check_ip = ($_raw_iplogin === '' || $_raw_iplogin === '0')
 $texterrr = "";
 
 if (isset($_POST['login'])) {
-
+    hamoix_csrf_check();
 
     $username = isset($_POST['username']) ? trim((string)$_POST['username']) : '';
     $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
@@ -81,12 +91,31 @@ if (isset($_POST['login'])) {
         $query->execute();
         $result = $query->fetch(PDO::FETCH_ASSOC);
 
-        if (!$result) {
-            $texterrr = 'نام کاربری یا رمزعبور وارد شده اشتباه است!';
-        } elseif ((string)$password !== (string)($result["password"] ?? '')) {
-            $texterrr = 'رمز صحیح نمی باشد';
-        } else {
+        $storedPassword = is_array($result) ? (string) ($result['password'] ?? '') : '';
+        $passwordValid = $storedPassword !== ''
+            && $storedPassword !== '__HAMOIX_INSTALL_PENDING__'
+            && password_verify($password, $storedPassword);
+        // Migrate legacy plaintext credentials after a successful login. New
+        // installations never create plaintext admin passwords.
+        if (!$passwordValid && $storedPassword !== ''
+            && $storedPassword !== '__HAMOIX_INSTALL_PENDING__'
+            && !preg_match('/^\$(2y|argon2i|argon2id)\$/', $storedPassword)
+            && hash_equals($storedPassword, $password)) {
+            $passwordValid = true;
+            try {
+                $upgrade = $pdo->prepare('UPDATE admin SET password = :password WHERE id_admin = :id');
+                $upgrade->execute([
+                    ':password' => password_hash($password, PASSWORD_DEFAULT),
+                    ':id' => (string) ($result['id_admin'] ?? ''),
+                ]);
+            } catch (\Throwable $e) {
+                error_log('[hamoix] admin password migration failed: ' . $e->getMessage());
+            }
+        }
 
+        if (!$result || !$passwordValid) {
+            $texterrr = 'نام کاربری یا رمزعبور وارد شده اشتباه است!';
+        } else {
 
             session_regenerate_id(true);
             $_SESSION["user"] = $result["username"];
@@ -167,6 +196,7 @@ if (isset($_POST['login'])) {
             <?php endif; ?>
 
             <form method="post" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF'], ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($loginCsrf, ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="form-group">
                     <label class="form-label">نام کاربری</label>
                     <div class="input-icon-wrap">

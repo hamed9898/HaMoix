@@ -23,6 +23,19 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    hamoix_csrf_check();
+}
+$panelsCsrf = hamoix_csrf_token();
+$panelsCsrfJson = json_encode($panelsCsrf);
+register_shutdown_function(static function () use ($panelsCsrfJson): void {
+    if (isset($_GET['ajax'])) {
+        return;
+    }
+    echo '<script>(function(){var t=' . $panelsCsrfJson . ';var f=window.fetch.bind(window);window.fetch=function(r,o){o=o||{};if(String(o.method||"GET").toUpperCase()==="POST"){o.headers=o.headers||{};if(typeof Headers!=="undefined" && o.headers instanceof Headers){o.headers.set("X-CSRF-Token",t);}else{o.headers["X-CSRF-Token"]=t;}}return f(r,o);};function a(){document.querySelectorAll("form[method=POST],form[method=post]").forEach(function(x){if(!x.querySelector("input[name=_csrf]")){var i=document.createElement("input");i.type="hidden";i.name="_csrf";i.value=t;x.appendChild(i);}});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",a);}else{a();}})();</script>';
+});
+
+
 
 $PANEL_TYPES = [
     'marzban'        => 'مرزبان (Marzban)',
@@ -103,15 +116,63 @@ if (!function_exists('hamoix_panel_loghost')) {
         return $out;
     }
 }
-if (!function_exists('hamoix_panel_logfp')) {
-    function hamoix_panel_logfp(string $s): string {
-        if ($s === '') return 'empty';
-        return 'len=' . strlen($s) . ',sha=' . substr(sha1($s), 0, 8);
+if (!function_exists('hamoix_safe_panel_url')) {
+    function hamoix_safe_panel_url(string $url): bool {
+        $parts = @parse_url(trim($url));
+        if (!is_array($parts) || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)) {
+            return false;
+        }
+        $host = strtolower(trim((string) ($parts['host'] ?? ''), '[]'));
+        if ($host === '' || isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+        if (isset($parts['port']) && ((int) $parts['port'] < 1 || (int) $parts['port'] > 65535)) {
+            return false;
+        }
+        if (in_array($host, ['localhost', 'localhost.localdomain', 'metadata.google.internal', 'metadata.google', 'instance-data.ec2.internal'], true)
+            || str_ends_with($host, '.localhost')) {
+            return false;
+        }
+
+        // This page makes server-side requests with stored panel credentials.
+        // Reject private, loopback, link-local and reserved destinations for
+        // both literal IPs and DNS names to prevent SSRF against cloud metadata
+        // services and services bound to the Hamoix host/network.
+        $isPublicIp = static function (string $candidate): bool {
+            return filter_var($candidate, FILTER_VALIDATE_IP) !== false
+                && filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+        };
+        $literalIp = filter_var($host, FILTER_VALIDATE_IP);
+        if ($literalIp !== false) {
+            return $isPublicIp($host);
+        }
+
+        $resolved = [];
+        if (function_exists('dns_get_record')) {
+            $records = @dns_get_record($host, DNS_A | DNS_AAAA);
+            if (is_array($records)) {
+                foreach ($records as $record) {
+                    if (!empty($record['ip'])) $resolved[] = (string) $record['ip'];
+                    if (!empty($record['ipv6'])) $resolved[] = (string) $record['ipv6'];
+                }
+            }
+        }
+        if (function_exists('gethostbynamel')) {
+            $resolved = array_merge($resolved, (array) @gethostbynamel($host));
+        }
+        if (!$resolved) {
+            return false;
+        }
+        foreach (array_unique($resolved) as $candidate) {
+            if (!$isPublicIp((string) $candidate)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
-
-
 function hamoix_test_panel_url_reachable(string $url): array {
+    if (!hamoix_safe_panel_url($url)) return ['ok' => false, 'code' => 0, 'error' => 'آدرس پنل نامعتبر یا غیرمجاز است'];
     if (!function_exists('curl_init')) return ['ok' => true, 'code' => 0, 'error' => null];
     $ch = curl_init();
     if (!$ch) return ['ok' => false, 'code' => 0, 'error' => 'cURL init ناموفق'];
@@ -119,13 +180,13 @@ function hamoix_test_panel_url_reachable(string $url): array {
         CURLOPT_URL            => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_NOBODY         => true,
-        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_MAXREDIRS      => 3,
         CURLOPT_TIMEOUT        => 4,
         CURLOPT_CONNECTTIMEOUT => 3,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.0',
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.1',
     ]);
     curl_exec($ch);
     $err  = curl_error($ch);
@@ -147,18 +208,19 @@ function hamoix_test_panel_url_reachable(string $url): array {
 
 
 function hamoix_http_post(string $url, string $body, array $headers = []): array {
+    if (!hamoix_safe_panel_url($url)) return ['ok' => false, 'error' => 'آدرس پنل نامعتبر یا غیرمجاز است', 'code' => 0, 'body' => ''];
     if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL در PHP نیست', 'code' => 0, 'body' => ''];
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL            => $url,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_MAXREDIRS      => 3,
         CURLOPT_TIMEOUT        => 4,
         CURLOPT_CONNECTTIMEOUT => 3,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.0',
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.1',
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $body,
         CURLOPT_HTTPHEADER     => $headers,
@@ -187,18 +249,19 @@ function hamoix_http_post(string $url, string $body, array $headers = []): array
 }
 
 function hamoix_http_get(string $url, array $headers = []): array {
+    if (!hamoix_safe_panel_url($url)) return ['ok' => false, 'error' => 'آدرس پنل نامعتبر یا غیرمجاز است', 'code' => 0, 'body' => ''];
     if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL در PHP نیست', 'code' => 0, 'body' => ''];
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL            => $url,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_MAXREDIRS      => 3,
         CURLOPT_TIMEOUT        => 4,
         CURLOPT_CONNECTTIMEOUT => 3,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.0',
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.1',
         CURLOPT_HTTPHEADER     => $headers,
     ]);
     $respBody = curl_exec($ch);
@@ -745,7 +808,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'toggle') {
 
         echo json_encode(['ok' => true, 'value' => $newValue, 'auto' => $autoNote]);
     } catch (\Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        error_log('[panel/panels] ajax failed: ' . $e->getMessage());
+        echo json_encode(['ok' => false, 'error' => 'خطای داخلی']);
     }
     exit;
 }
@@ -806,6 +870,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'آدرس URL باید با http:// یا https:// شروع شود.';
             } elseif (!filter_var($urlPanel, FILTER_VALIDATE_URL)) {
                 $errors[] = 'فرمت آدرس URL نامعتبر است.';
+            } elseif (!hamoix_safe_panel_url($urlPanel)) {
+                $errors[] = 'آدرس پنل به مقصد داخلی/غیرمجاز اشاره می‌کند.';
             } elseif (preg_match('~://[^/?#@]*:(?:/|$|\?|\#)~', $urlPanel) && !parse_url($urlPanel, PHP_URL_PORT)) {
                 $errors[] = 'آدرس URL پورت ناقص دارد — مثال درست: https://1.2.3.4:2053';
             } elseif (mb_strlen($urlPanel) > 2000) {
@@ -834,13 +900,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
                 error_log(sprintf(
-                    '[panel/panels] ADD auth test: type=%s url=%s user=%s -> verified=%s ok=%s msg=%s',
+                    '[panel/panels] ADD auth test: type=%s url_host=%s user=%s -> verified=%s ok=%s',
                     $type,
-                    $urlPanel,
+                    hamoix_panel_loghost($urlPanel),
                     $userPanel,
                     $auth['verified'] ? 'YES' : 'NO',
-                    $auth['ok']       ? 'YES' : 'NO',
-                    $auth['message']  ?? ''
+                    $auth['ok']       ? 'YES' : 'NO'
                 ));
                 hamoix_panel_authlog('ADD_AUTH_TEST', [
                     'type'     => $type,
@@ -915,7 +980,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'flash'        => $flash['ok'],
                 ]);
             } catch (\Throwable $e) {
-                $flash['err'] = 'خطا در افزودن پنل: ' . $e->getMessage();
+                $flash['err'] = 'خطا در افزودن پنل؛ جزئیات در لاگ سرور ثبت شد.';
                 error_log('[panel/panels] add failed: ' . $e->getMessage());
                 hamoix_panel_authlog('ADD_ERROR', ['name' => $namePanel, 'error' => $e->getMessage()]);
             }
@@ -958,8 +1023,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'username'          => $userPanel,
             'has_password'      => $passPanel !== '',
             'has_api_key'       => $apiKey !== '',
-            'pw_fp'             => hamoix_panel_logfp($passPanel),
-            'post_keys'         => array_keys($_POST),
+                        'post_keys'         => array_keys($_POST),
         ]);
 
         if (!isset($PANEL_TYPES[$type])) $type = 'marzban';
@@ -982,6 +1046,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'آدرس URL باید با http:// یا https:// شروع شود.';
             } elseif (!filter_var($urlPanel, FILTER_VALIDATE_URL)) {
                 $errors[] = 'فرمت آدرس URL نامعتبر است.';
+            } elseif (!hamoix_safe_panel_url($urlPanel)) {
+                $errors[] = 'آدرس پنل به مقصد داخلی/غیرمجاز اشاره می‌کند.';
             } elseif (preg_match('~://[^/?#@]*:(?:/|$|\?|\#)~', $urlPanel) && !parse_url($urlPanel, PHP_URL_PORT)) {
                 
                 $errors[] = 'آدرس URL پورت ناقص دارد — مثال درست: https://1.2.3.4:2053 (بدون / بعد از :)';
@@ -1037,8 +1103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $skipTest = true;
                             $skipNote = ' تغییری در اعتبارها داده نشده — وضعیت قبلی (فعال) حفظ شد.';
                             error_log(sprintf(
-                                '[panel/panels] EDIT auth test SKIPPED (no credential change): id=%d type=%s url=%s user=%s',
-                                $id, $type, $urlPanel, $userPanel
+                                '[panel/panels] EDIT auth test SKIPPED (no credential change): id=%d type=%s url_host=%s user=%s',
+                                $id, $type, hamoix_panel_loghost($urlPanel), $userPanel
                             ));
                         }
                     } catch (\Throwable $e) {
@@ -1080,9 +1146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'type'           => $type,
                     'url_host'       => hamoix_panel_loghost($urlPanel),
                     'username'       => $userPanel,
-                    'effective_pw_fp'  => hamoix_panel_logfp($effectivePass),
-                    'effective_key_fp' => hamoix_panel_logfp($effectiveKey),
-                    'pw_source'        => $passPanel !== '' ? 'form' : 'db',
+                                        'pw_source'        => $passPanel !== '' ? 'form' : 'db',
                     'key_source'       => $apiKey   !== '' ? 'form' : 'db',
                 ]);
 
@@ -1090,14 +1154,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
                 error_log(sprintf(
-                    '[panel/panels] EDIT auth test: id=%d type=%s url=%s user=%s -> verified=%s ok=%s msg=%s',
+                    '[panel/panels] EDIT auth test: id=%d type=%s url_host=%s user=%s -> verified=%s ok=%s',
                     $id,
                     $type,
-                    $urlPanel,
+                    hamoix_panel_loghost($urlPanel),
                     $userPanel,
                     $auth['verified'] ? 'YES' : 'NO',
-                    $auth['ok']       ? 'YES' : 'NO',
-                    $auth['message']  ?? ''
+                    $auth['ok']       ? 'YES' : 'NO'
                 ));
                 hamoix_panel_authlog('EDIT_AUTH_TEST', [
                     'id'       => $id,

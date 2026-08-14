@@ -61,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
             if ((int) $exists->fetchColumn() > 0) {
                 reseller_admin_redirect('این نام کاربری قبلاً ثبت شده است.', 'error');
             }
-            if (strlen($password) < 4) {
-                reseller_admin_redirect('رمز عبور باید حداقل ۴ کاراکتر باشد.', 'error');
+            if (strlen($password) < 12) {
+                reseller_admin_redirect('رمز عبور باید حداقل ۱۲ کاراکتر باشد.', 'error');
             }
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $ins = $pdo->prepare(
@@ -90,6 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 ':mw' => $minWithdraw, ':id' => $id,
             ];
             if ($password !== '') {
+                if (strlen($password) < 12) {
+                    reseller_admin_redirect('رمز عبور جدید باید حداقل ۱۲ کاراکتر باشد.', 'error');
+                }
                 $sets .= ", password=:p";
                 $params[':p'] = password_hash($password, PASSWORD_DEFAULT);
             }
@@ -262,7 +265,7 @@ function res_e($s)
                         <input type="hidden" name="action" value="create">
                         <div class="form-row" style="display:flex; gap:14px; flex-wrap:wrap;">
                             <div class="form-group" style="flex:1; min-width:180px;"><label class="form-label">نام کاربری</label><input type="text" name="username" class="form-control" required></div>
-                            <div class="form-group" style="flex:1; min-width:180px;"><label class="form-label">رمز عبور</label><input type="text" name="password" class="form-control" required></div>
+                            <div class="form-group" style="flex:1; min-width:180px;"><label class="form-label">رمز عبور (حداقل ۱۲ کاراکتر)</label><input type="password" name="password" class="form-control" minlength="12" required></div>
                             <div class="form-group" style="flex:1; min-width:180px;"><label class="form-label">نام نمایش</label><input type="text" name="name" class="form-control"></div>
                         </div>
                         <div class="form-row" style="display:flex; gap:14px; flex-wrap:wrap;">
@@ -318,7 +321,7 @@ function res_e($s)
                                                     <input type="hidden" name="id" value="<?php echo (int) $r['id']; ?>">
                                                     <div class="form-row" style="display:flex; gap:10px; flex-wrap:wrap;">
                                                         <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">نام کاربری</label><input type="text" name="username" class="form-control" value="<?php echo res_e($r['username']); ?>"></div>
-                                                        <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">رمز جدید (خالی=بدون تغییر)</label><input type="text" name="password" class="form-control"></div>
+                                                        <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">رمز جدید (خالی=بدون تغییر)</label><input type="password" name="password" class="form-control" minlength="12"></div>
                                                         <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">نام نمایش</label><input type="text" name="name" class="form-control" value="<?php echo res_e($r['name']); ?>"></div>
                                                     </div>
                                                     <div class="form-row" style="display:flex; gap:10px; flex-wrap:wrap;">

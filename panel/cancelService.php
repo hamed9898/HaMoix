@@ -14,6 +14,17 @@ if (!isset($_SESSION["user"]) || !$result) {
     return;
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$_csrf = $_SESSION['csrf_token'];
+if (isset($_GET['removeid']) || isset($_GET['delpr'])) {
+    if (!hash_equals((string) $_csrf, (string) ($_GET['_csrf'] ?? ''))) {
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+    }
+}
+
 /* ---------- helpers ---------- */
 function fx_table_has_col(PDO $pdo, string $table, string $col): bool {
     try {
@@ -111,10 +122,10 @@ try {
             'amount'  => (int)($r['price'] ?? 0),
             'date'    => (string)($r['time'] ?? ''),
             'stLabel' => $stLabel, 'stClass' => $stClass, 'stKey' => $stKey,
-            'del'     => in_array($stKey, ['reject','expire'], true) ? ('cancelService.php?delpr=' . (int)($r['id'] ?? 0)) : '',
+            'del'     => in_array($stKey, ['reject','expire'], true) ? ('cancelService.php?delpr=' . (int)($r['id'] ?? 0) . '&_csrf=' . rawurlencode($_csrf)) : '',
         ];
     }
-} catch (\Throwable $e) { $flash['err'] = 'بارگذاری درخواست‌های پرداخت ناموفق: ' . $e->getMessage(); }
+} catch (\Throwable $e) { $flash['err'] = 'بارگذاری درخواست‌های پرداخت ناموفق: '; }
 
 // 2) cancel_service — service cancel requests
 try {
@@ -131,7 +142,7 @@ try {
             'amount'  => 0,
             'date'    => '',
             'stLabel' => $stLabel, 'stClass' => $stClass, 'stKey' => $stKey,
-            'del'     => 'cancelService.php?removeid=' . (int)($r['id'] ?? 0),
+            'del'     => 'cancelService.php?removeid=' . (int)($r['id'] ?? 0) . '&_csrf=' . rawurlencode($_csrf),
         ];
     }
 } catch (\Throwable $e) {}
