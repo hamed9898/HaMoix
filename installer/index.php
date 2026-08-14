@@ -3,6 +3,7 @@ error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 @ini_set('display_errors', '0');
 @ini_set('log_errors', '1');
 @ini_set('default_charset', 'UTF-8');
+require_once __DIR__ . '/domain.php';
 
 $uPOST = sanitizeInput($_POST);
 $rootDirectory = dirname(__DIR__).'/';
@@ -51,7 +52,7 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
     $dbInfo['name'] = $uPOST['database_name'];
     $dbInfo['username'] = $uPOST['database_username'];
     $dbInfo['password'] = $uPOST['database_password'];
-    $document = normalizeDomainAddress('https://' . rtrim($webAddress, '/') . '/index.php');
+    $document = normalizeDomainAddressWithPort('https://' . rtrim($webAddress, '/') . '/index.php');
     if ($document === null) {
         $ERROR[] = 'آدرس پنل نامعتبر است.';
     }
@@ -86,9 +87,9 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
             $ERROR[] = "فایل های پروژه را مجددا دانلود و بارگذاری کنید (<a href='https://github.com/hamed9898/Hamoix/releases/'>‎🌐 Github</a>)";
     }
         else {
-            $baseAddress = rtrim($document['address'], '/');
-
-            $tableResult = getContents("https://".$baseAddress."/table.php");
+            // Run migrations locally so self-signed certificates on alternate
+            // HTTPS ports do not block the first installation.
+            $tableResult = runTableMigrationsLocally($tablesDirectory, $rootDirectory);
             $SUCCESS[] = "✅ جداول دیتابیس ایجاد/بروزرسانی شد";
             ensureAdminRecord($dbInfo, '0');
             $SUCCESS[] = "✅ نصب وب‌محور تکمیل شد — نام کاربری ورود: admin";

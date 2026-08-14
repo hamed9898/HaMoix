@@ -145,6 +145,30 @@ https://panel.example.com/panel/login.php
 
 ➡️ [راهنمای استقرار روی VPS](DEPLOY_VPS.md)
 
+### نصب جایگزین روی پورت 8443
+
+اگر پنل VPN یا سرویس دیگری پورت‌های 80 و 443 را اشغال کرده است، از نصب‌کننده‌ی جایگزین استفاده کنید. این نسخه تمام Hamoix را روی HTTPS پورت 8443 اجرا می‌کند:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamed9898/HaMoix/main/install-hamoix-8443.sh | sudo bash -s -- panel.example.com admin@example.com
+```
+
+در این حالت مسیر نصب به شکل زیر خواهد بود:
+
+```text
+https://panel.example.com:8443/installer/
+```
+
+پورت **8443/TCP** را در فایروال باز کنید. چون صدور خودکار Let's Encrypt به پورت‌های استاندارد 80/443 نیاز دارد، نصب‌کننده‌ی 8443 یک گواهی self-signed می‌سازد و مرورگر در اولین ورود هشدار امنیتی نشان می‌دهد؛ برای ورود به Wizard باید گزینه‌ی ادامه/پذیرش گواهی را انتخاب کنید. برای استفاده‌ی عمومی، بعداً می‌توانید گواهی معتبر دامنه را روی همین Nginx جایگزین کنید. اگر UFW فعال باشد، اسکریپت پورت انتخاب‌شده را خودکار مجاز می‌کند.
+
+همین نصب‌کننده برای پورت آزاد دیگری هم قابل استفاده است؛ عدد پورت را به‌عنوان آرگومان سوم بدهید:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamed9898/HaMoix/main/install-hamoix-8443.sh | sudo bash -s -- panel.example.com admin@example.com 9443
+```
+
+در این نمونه آدرس Wizard برابر `https://panel.example.com:9443/installer/` است. برای حذف ایمیل و تعیین پورت، آرگومان ایمیل را خالی بگذارید: `... | sudo bash -s -- panel.example.com "" 9443`.
+
 ---
 
 ## نصب روی cPanel یا aaPanel
@@ -320,6 +344,7 @@ composer install --no-dev --no-interaction --prefer-dist
 - [استقرار کامل روی VPS](DEPLOY_VPS.md)
 - [راهنمای هاست cPanel / aaPanel](host.md)
 - [installer وب‌محور VPS](install-hamoix.sh)
+- [installer جایگزین پورت 8443](install-hamoix-8443.sh)
 - [مخزن 3x-ui](https://github.com/MHSanaei/3x-ui)
 
 ---
