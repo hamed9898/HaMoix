@@ -563,8 +563,12 @@ if (!function_exists('hamoix_maintenance_update_source')) {
                 }
                 foreach ($installerOverrideFiles as $file) {
                     $sourcePath = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file);
+                    // A deleted tracked installer file has no local content
+                    // to preserve; Git restore below will bring back the
+                    // official version. Do not treat that normal deletion as
+                    // a backup failure.
                     if (!is_file($sourcePath)) {
-                        return ['ok' => false, 'message' => 'فایل محلی installer برای backup پیدا نشد؛ update لغو شد.'];
+                        continue;
                     }
                     $copyPath = $localChangeStage . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file);
                     $copyDirectory = dirname($copyPath);
