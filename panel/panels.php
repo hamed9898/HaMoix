@@ -78,6 +78,23 @@ $has_col = function (string $c) use (&$PANEL_COLS): bool {
     return isset($PANEL_COLS[strtolower($c)]);
 };
 
+// Older installations may have been created before API-key fields were added
+// to the panel schema. Bring only these optional credential columns forward;
+// the INSERT below also remains compatible if the database user cannot ALTER.
+foreach (['api_key' => 'VARCHAR(500) NULL', 'xui_api_token' => 'VARCHAR(1000) NULL'] as $column => $definition) {
+    if ($has_col($column) || !($pdo instanceof PDO)) {
+        continue;
+    }
+    try {
+        if (preg_match('/^[a-z_]+$/', $column) && preg_match('/^[A-Z0-9() ,]+$/', $definition)) {
+            $pdo->exec("ALTER TABLE `marzban_panel` ADD COLUMN `{$column}` {$definition}");
+            $PANEL_COLS[strtolower($column)] = true;
+        }
+    } catch (\Throwable $e) {
+        error_log('[panel/panels] optional schema migration failed for ' . $column . ': ' . $e->getMessage());
+    }
+}
+
 
 if (!function_exists('hamoix_panel_authlog')) {
     function hamoix_panel_authlog(string $stage, array $data = []): void {
@@ -1010,23 +1027,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $codePanel = strtolower(preg_replace('/[^a-z0-9]/i', '', $namePanel) . '_' . substr(md5(uniqid('', true)), 0, 6));
 
 
+                $insertData = [
+                    'code_panel'     => $codePanel,
+                    'name_panel'     => $namePanel,
+                    'status'         => $initialStatus,
+                    'url_panel'      => $urlPanel,
+                    'username_panel' => $userPanel,
+                    'password_panel' => $passPanel,
+                    'type'           => $type,
+                    'agent'          => $agent,
+                ];
+                if ($has_col('api_key')) {
+                    $insertData['api_key'] = $apiKey;
+                } elseif ($apiKey !== '') {
+                    throw new \RuntimeException('ستون API key در ساختار دیتابیس وجود ندارد و migration آن انجام نشد.');
+                }
+                if ($has_col('xui_api_token')) {
+                    $insertData['xui_api_token'] = $xuiToken;
+                } elseif ($xuiToken !== '') {
+                    throw new \RuntimeException('ستون API token در ساختار دیتابیس وجود ندارد و migration آن انجام نشد.');
+                }
+
+                $insertColumns = array_keys($insertData);
+                $insertParams = [];
+                $insertPlaceholders = [];
+                foreach ($insertData as $column => $value) {
+                    $placeholder = ':add_' . $column;
+                    $insertPlaceholders[] = $placeholder;
+                    $insertParams[$placeholder] = $value;
+                }
+                $quotedColumns = array_map(static function (string $column): string {
+                    return '`' . $column . '`';
+                }, $insertColumns);
                 $stmt = $pdo->prepare(
-                    "INSERT INTO marzban_panel
-                     (code_panel, name_panel, status, url_panel, username_panel, password_panel, api_key, xui_api_token, type, agent)
-                     VALUES (:c, :n, :st, :u, :user, :pass, :api, :xt, :type, :agent)"
+                    'INSERT INTO `marzban_panel` (' . implode(', ', $quotedColumns) . ') VALUES ('
+                    . implode(', ', $insertPlaceholders) . ')'
                 );
-                $stmt->execute([
-                    ':c'    => $codePanel,
-                    ':n'    => $namePanel,
-                    ':st'   => $initialStatus,
-                    ':u'    => $urlPanel,
-                    ':user' => $userPanel,
-                    ':pass' => $passPanel,
-                    ':api'  => $apiKey,
-                    ':xt'   => $xuiToken,
-                    ':type' => $type,
-                    ':agent'=> $agent,
-                ]);
+                $stmt->execute($insertParams);
                 $statusLabel = $initialStatus === 'active' ? '«فعال»' : '«غیرفعال»';
                 $flash['ok'] = 'پنل جدید با وضعیت ' . $statusLabel . ' ثبت شد.' . $testNote;
                 hamoix_panel_authlog('ADD_DONE', [
