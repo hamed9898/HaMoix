@@ -427,6 +427,8 @@ if (!function_exists('hamoix_maintenance_is_runtime_path')) {
             'storage/backups',
             'panel/panel-auth.log',
             'cron/cron.lock',
+            'cron/use_loopback.flag',
+            'composer.lock',
             'log.txt',
             'error_log',
             'error.log',
@@ -485,10 +487,23 @@ if (!function_exists('hamoix_maintenance_update_source')) {
                 }
             }
         }
+
+        $blockedFiles = [];
         foreach ($changedFiles as $file) {
             if ($file !== 'config.php') {
-                return ['ok' => false, 'message' => 'ابتدا تغییرات محلی خارج از config.php را backup یا بررسی کنید؛ update لغو شد.'];
+                $blockedFiles[] = $file;
             }
+        }
+        if (!empty($blockedFiles)) {
+            $shownFiles = array_slice($blockedFiles, 0, 5);
+            $fileLabel = implode(', ', $shownFiles);
+            if (count($blockedFiles) > count($shownFiles)) {
+                $fileLabel .= ' و چند فایل دیگر';
+            }
+            return [
+                'ok' => false,
+                'message' => 'ابتدا تغییرات محلی خارج از config.php را backup یا بررسی کنید؛ update لغو شد. فایل(های) مانع: ' . $fileLabel,
+            ];
         }
 
         $backup = hamoix_maintenance_create_backup();
