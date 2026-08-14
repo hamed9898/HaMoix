@@ -294,6 +294,14 @@ mysqldump -u hamoix -p hamoix | gzip > "/root/backups/hamoix_$(date +%F).sql.gz"
 ### صفحه سفید یا خطای 500
 
 - نسخه‌ی PHP را بررسی کنید: `php -v`
+- اگر Composer خطای `Class "Normalizer" not found` یا نبودن `curl` داد، مطمئن شوید همان نسخه‌ای که CLI اجرا می‌کند افزونه‌ها را دارد؛ مثلاً برای PHP 8.2:
+
+  ```bash
+  php8.2 -m | grep -E '^(curl|intl|mbstring|mysqli|pdo_mysql|gd|zip|xml|bcmath)$'
+  php8.2 /usr/bin/composer install --no-dev --no-interaction --prefer-dist
+  ```
+
+  نصب‌کننده‌ی سریع Hamoix از CLI نسخه‌دار استفاده می‌کند تا `php8.2-*` با PHP فعال دیگری قاطی نشود.
 - افزونه‌های PHP و Composer را بررسی کنید.
 - لاگ PHP-FPM و وب‌سرور را بخوانید.
 - syntax فایل‌ها را بررسی کنید:

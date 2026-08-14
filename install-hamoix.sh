@@ -128,14 +128,30 @@ if [[ "${SSL_MODE}" == "self-signed" ]] && port_is_listening "${HTTPS_PORT}"; th
     fail "پورت HTTPS ${HTTPS_PORT} در حال استفاده است؛ یک پورت آزاد انتخاب کنید."
 fi
 
-PHP_BIN="$(command -v php)"
+# Prefer the versioned CLI that was installed above. Using bare `php` here can
+# silently select a different system alternative (for example PHP 8.5 while
+# only php8.2-intl/php8.2-curl were installed), which makes Composer fail with
+# misleading missing-extension errors.
+PHP_BIN="$(command -v "php${PHP_VERSION}" 2>/dev/null || true)"
+if [[ -z "${PHP_BIN}" ]]; then
+    PHP_BIN="$(command -v php 2>/dev/null || true)"
+fi
+[[ -n "${PHP_BIN}" && -x "${PHP_BIN}" ]] || fail "PHP CLI پیدا نشد."
 PHP_RUNTIME_VERSION="$(${PHP_BIN} -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')"
 if ! "${PHP_BIN}" -r 'exit(version_compare(PHP_VERSION, "8.2.0", ">=") ? 0 : 1);'; then
     fail "PHP ${PHP_RUNTIME_VERSION} نصب شد، اما Hamoix به PHP 8.2 یا بالاتر نیاز دارد."
 fi
+
+for extension in curl intl mbstring mysqli pdo_mysql gd zip xml bcmath; do
+    "${PHP_BIN}" -m | grep -Fxqi "${extension}" || fail "افزونه PHP مورد نیاز ${extension} برای PHP ${PHP_RUNTIME_VERSION} فعال نیست."
+done
+
 PHP_FPM_SERVICE="php${PHP_RUNTIME_VERSION}-fpm"
 PHP_FPM_SOCKET="/run/php/${PHP_FPM_SERVICE}.sock"
 [[ -S "${PHP_FPM_SOCKET}" || -e "${PHP_FPM_SOCKET}" ]] || log "سوکت PHP-FPM بعد از راه‌اندازی سرویس ایجاد می‌شود: ${PHP_FPM_SOCKET}"
+COMPOSER_BIN="$(command -v composer 2>/dev/null || true)"
+[[ -n "${COMPOSER_BIN}" ]] || fail "Composer پیدا نشد."
+COMPOSER_CMD=("${PHP_BIN}" "${COMPOSER_BIN}")
 
 log "راه‌اندازی MariaDB و ساخت دیتابیس اختصاصی Hamoix..."
 systemctl enable --now mariadb
@@ -170,8 +186,8 @@ mkdir -p "${APP_DIR}"
 cp -a "${tmp_dir}/source/." "${APP_DIR}/"
 
 cd "${APP_DIR}"
-log "نصب وابستگی‌های Composer..."
-COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+log "نصب وابستگی‌های Composer با PHP ${PHP_RUNTIME_VERSION}..."
+COMPOSER_ALLOW_SUPERUSER=1 "${COMPOSER_CMD[@]}" install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 mkdir -p logs storage/cache
 chown -R www-data:www-data "${APP_DIR}"
 find "${APP_DIR}" -type d -exec chmod 755 {} +
