@@ -23,6 +23,7 @@ readonly SSL_MODE="${HAMOIX_SSL_MODE:-letsencrypt}"
 readonly DB_NAME="${HAMOIX_DB_NAME:-hamoix}"
 readonly DB_USER="${HAMOIX_DB_USER:-hamoix}"
 readonly DB_CREDENTIALS_FILE="${HAMOIX_DB_CREDENTIALS_FILE:-/root/.hamoix-db-credentials}"
+readonly HAMOIX_BACKUP_DIR="/var/lib/hamoix/backups"
 
 log() { printf '[Hamoix] %s\n' "$*"; }
 fail() { printf '[Hamoix][ERROR] %s\n' "$*" >&2; exit 1; }
@@ -188,8 +189,10 @@ cp -a "${tmp_dir}/source/." "${APP_DIR}/"
 cd "${APP_DIR}"
 log "نصب وابستگی‌های Composer با PHP ${PHP_RUNTIME_VERSION}..."
 COMPOSER_ALLOW_SUPERUSER=1 "${COMPOSER_CMD[@]}" install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-mkdir -p logs storage/cache
+mkdir -p logs storage/cache "${HAMOIX_BACKUP_DIR}"
 chown -R www-data:www-data "${APP_DIR}"
+chown -R www-data:www-data "$(dirname "${HAMOIX_BACKUP_DIR}")"
+chmod 700 "${HAMOIX_BACKUP_DIR}"
 find "${APP_DIR}" -type d -exec chmod 755 {} +
 find "${APP_DIR}" -type f -exec chmod 644 {} +
 

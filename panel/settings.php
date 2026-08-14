@@ -4,6 +4,7 @@
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/maintenance.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
 $query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
@@ -20,11 +21,54 @@ if (empty($_SESSION['csrf_token'])) {
 $_csrf = $_SESSION['csrf_token'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $incoming = $_POST['_csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $incoming)) {
+    if (!is_string($incoming) || !hash_equals((string)$_SESSION['csrf_token'], $incoming)) {
         http_response_code(403);
         exit('درخواست نامعتبر — توکن CSRF اشتباه است');
     }
 }
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['download'])) {
+    hamoix_maintenance_send_download((string)$_GET['download']);
+}
+
+$maintenanceNotice = '';
+$maintenanceNoticeType = 'success';
+$maintenanceBackupId = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_action'])) {
+    $maintenanceAction = is_string($_POST['maintenance_action']) ? $_POST['maintenance_action'] : '';
+    if ($maintenanceAction === 'create_backup') {
+        $backupResult = hamoix_maintenance_create_backup();
+        if (($backupResult['ok'] ?? false) === true) {
+            $maintenanceBackupId = $backupResult['id'] ?? null;
+            $maintenanceNotice = 'نسخهٔ پشتیبان با موفقیت ساخته شد و برای دانلود/restore آماده است.';
+        } else {
+            $maintenanceNotice = (string)($backupResult['message'] ?? 'ساخت backup ناموفق بود.');
+            $maintenanceNoticeType = 'error';
+        }
+    } elseif ($maintenanceAction === 'update_source') {
+        set_time_limit(300);
+        $updateResult = hamoix_maintenance_update_source();
+        if (($updateResult['ok'] ?? false) === true) {
+            $maintenanceBackupId = $updateResult['backup_id'] ?? null;
+            $maintenanceNotice = (string)($updateResult['message'] ?? 'سورس با موفقیت به‌روزرسانی شد.');
+            $maintenanceNoticeType = !empty($updateResult['warning']) ? 'warning' : 'success';
+        } else {
+            $maintenanceNotice = (string)($updateResult['message'] ?? 'به‌روزرسانی سورس ناموفق بود.');
+            $maintenanceNoticeType = 'error';
+        }
+    } elseif ($maintenanceAction === 'restore_backup') {
+        $backupId = isset($_POST['backup_id']) && is_string($_POST['backup_id']) ? $_POST['backup_id'] : '';
+        $restoreResult = hamoix_maintenance_restore_backup($backupId);
+        if (($restoreResult['ok'] ?? false) === true) {
+            $maintenanceBackupId = $restoreResult['safety_backup_id'] ?? null;
+            $maintenanceNotice = 'سورس و دیتابیس از backup انتخاب‌شده بازگردانی شد. یک backup ایمنی نیز قبل از restore ساخته شد.';
+        } else {
+            $maintenanceNotice = (string)($restoreResult['message'] ?? 'بازگردانی backup ناموفق بود.');
+            $maintenanceNoticeType = 'error';
+        }
+    }
+}
+$maintenanceBackups = hamoix_maintenance_list_backups();
 
 
 $SETTING_GROUPS = [
@@ -256,6 +300,90 @@ function hamoix_is_toggle_on($cur, $on, $off) {
                     </span>
                 </div>
             <?php endif; ?>
+
+            <?php if ($maintenanceNotice !== ''): ?>
+                <div class="alert alert-<?php echo htmlspecialchars($maintenanceNoticeType, ENT_QUOTES, 'UTF-8'); ?>">
+                    <?php echo icon($maintenanceNoticeType === 'error' ? 'circle-exclamation' : 'circle-check', 'svg-icon'); ?>
+                    <span><?php echo htmlspecialchars($maintenanceNotice, ENT_QUOTES, 'UTF-8'); ?></span>
+                    <?php if ($maintenanceBackupId !== null): ?>
+                        <a href="settings.php?download=<?php echo rawurlencode((string)$maintenanceBackupId); ?>" class="btn btn-outline" style="margin-right:auto;">دانلود backup</a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
+            <div class="card" style="margin-bottom:22px; border:1px solid rgba(124,92,246,.28);">
+                <div class="card__head">
+                    <div class="card__title">
+                        <?php echo icon('refresh', 'svg-icon svg-md'); ?>
+                        <span>نگهداری و بروزرسانی سورس</span>
+                    </div>
+                </div>
+                <p style="margin:0 0 16px; color:var(--text-muted,#9aa4b8); line-height:1.9;">
+                    قبل از هر بروزرسانی از فایل‌های سورس، <code>config.php</code> و دیتابیس backup خارج از ریشهٔ وب ساخته می‌شود. تغییرات محلی خارج از config.php باعث لغو امن update خواهد شد.
+                </p>
+                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <form method="post" action="settings.php" onsubmit="return confirm('ابتدا backup ساخته می‌شود و سپس آخرین تغییرات branch اصلی Hamoix دریافت خواهد شد. ادامه می‌دهید؟');">
+                        <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="hidden" name="maintenance_action" value="update_source">
+                        <button type="submit" class="btn btn-primary">
+                            <?php echo icon('refresh', 'svg-icon svg-sm'); ?>
+                            بروزرسانی از GitHub + backup
+                        </button>
+                    </form>
+                    <form method="post" action="settings.php">
+                        <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="hidden" name="maintenance_action" value="create_backup">
+                        <button type="submit" class="btn btn-outline">
+                            <?php echo icon('save', 'svg-icon svg-sm'); ?>
+                            ساخت backup جدید
+                        </button>
+                    </form>
+                    <span style="font-size:12px; color:var(--text-muted,#9aa4b8);">فایل‌های backup فقط از همین بخش قابل دریافت هستند.</span>
+                </div>
+
+                <div style="margin-top:20px; overflow-x:auto;">
+                    <h4 style="margin:0 0 10px;">backupهای موجود و restore</h4>
+                    <?php if (empty($maintenanceBackups)): ?>
+                        <p style="margin:0; color:var(--text-muted,#9aa4b8);">هنوز backupای ثبت نشده است.</p>
+                    <?php else: ?>
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>تاریخ</th>
+                                    <th>حجم</th>
+                                    <th>عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($maintenanceBackups as $maintenanceBackup):
+                                    $backupSize = (int)$maintenanceBackup['size'];
+                                    if ($backupSize >= 1048576) {
+                                        $backupSizeLabel = number_format($backupSize / 1048576, 2) . ' MB';
+                                    } elseif ($backupSize >= 1024) {
+                                        $backupSizeLabel = number_format($backupSize / 1024, 1) . ' KB';
+                                    } else {
+                                        $backupSizeLabel = $backupSize . ' B';
+                                    }
+                                ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars(date('Y-m-d H:i', (int)$maintenanceBackup['created_at']), ENT_QUOTES, 'UTF-8'); ?></td>
+                                        <td style="direction:ltr; text-align:right;"><?php echo htmlspecialchars($backupSizeLabel, ENT_QUOTES, 'UTF-8'); ?></td>
+                                        <td style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <a class="btn btn-outline" href="settings.php?download=<?php echo rawurlencode($maintenanceBackup['id']); ?>">دانلود</a>
+                                            <form method="post" action="settings.php" onsubmit="return confirm('این backup جایگزین فایل‌های سورس و دیتابیس فعلی می‌شود. قبل از آن یک backup ایمنی خودکار ساخته خواهد شد. ادامه می‌دهید؟');">
+                                                <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+                                                <input type="hidden" name="maintenance_action" value="restore_backup">
+                                                <input type="hidden" name="backup_id" value="<?php echo htmlspecialchars($maintenanceBackup['id'], ENT_QUOTES, 'UTF-8'); ?>">
+                                                <button type="submit" class="btn btn-outline">restore</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+            </div>
 
             <form method="POST" action="settings.php" autocomplete="off">
                 <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
