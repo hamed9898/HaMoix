@@ -157,24 +157,63 @@ if (!function_exists('xuisingle_cookie_path')) {
 function panel_login_cookie($code_panel)
 {
     $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
+    $cookiePath = xuisingle_cookie_path();
+    $csrfToken = '';
+
+    // Sanaei 3x-ui v3 protects the login POST with a session CSRF token.
+    // Store the session cookie in the same jar used by subsequent API calls.
+    $csrfCurl = curl_init();
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($csrfCurl, 'panel');
+    curl_setopt_array($csrfCurl, array(
+        CURLOPT_URL => rtrim($panel['url_panel'], '/') . '/csrf-token',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_TIMEOUT_MS => 4000,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_HTTPHEADER => array('Accept: application/json', 'X-Requested-With: XMLHttpRequest'),
+        CURLOPT_COOKIEJAR => $cookiePath,
+        CURLOPT_COOKIEFILE => $cookiePath,
+    ));
+    $csrfResponse = curl_exec($csrfCurl);
+    $csrfError = curl_error($csrfCurl);
+    curl_close($csrfCurl);
+    if ($csrfError === '') {
+        $csrfJson = json_decode((string)$csrfResponse, true);
+        if (is_array($csrfJson) && isset($csrfJson['obj']) && is_string($csrfJson['obj'])) {
+            $csrfToken = trim($csrfJson['obj']);
+        }
+    }
+
+    $loginHeaders = array('Content-Type: application/x-www-form-urlencoded', 'Accept: application/json', 'X-Requested-With: XMLHttpRequest');
+    if ($csrfToken !== '') {
+        $loginHeaders[] = 'X-CSRF-Token: ' . $csrfToken;
+    }
+
     $curl = curl_init();
     if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
-        CURLOPT_URL => $panel['url_panel'] . '/login',
+        CURLOPT_URL => rtrim($panel['url_panel'], '/') . '/login',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_MAXREDIRS => 3,
         CURLOPT_TIMEOUT_MS => 4000,
-        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => "username={$panel['username_panel']}&password=" . urlencode($panel['password_panel']),
-        CURLOPT_COOKIEJAR => xuisingle_cookie_path(),
+        CURLOPT_POSTFIELDS => http_build_query(array(
+            'username' => $panel['username_panel'],
+            'password' => $panel['password_panel'],
+        )),
+        CURLOPT_HTTPHEADER => $loginHeaders,
+        CURLOPT_COOKIEJAR => $cookiePath,
+        CURLOPT_COOKIEFILE => $cookiePath,
     ));
     $response = curl_exec($curl);
     if (curl_error($curl)) {
         $token = [];
         $token['errror'] = curl_error($curl);
+        curl_close($curl);
         return $token;
     }
     curl_close($curl);

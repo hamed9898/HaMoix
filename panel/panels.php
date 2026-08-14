@@ -42,7 +42,7 @@ register_shutdown_function(static function (): void {
     if (isset($_GET['ajax'])) {
         return;
     }
-    echo '<script>(function(){function a(){var f=document.querySelector("#modal-add-panel form");if(!f)return;["url_panel","username_panel","password_panel","type"].forEach(function(n){var e=f.elements.namedItem(n);if(e)e.id=n;});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",a);}else{a();}})();</script>';
+    echo '<script>(function(){function a(){var f=document.querySelector("#modal-add-panel form");if(!f)return;["url_panel","username_panel","password_panel","type"].forEach(function(n){var e=f.elements.namedItem(n);if(e)e.id=n;});var token=f.elements.namedItem("xui_api_token");if(token)token.placeholder="Settings → Security → API Token";}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",a);}else{a();}})();</script>';
 });
 
 $PANEL_TYPES = [
@@ -257,8 +257,8 @@ function hamoix_http_post(string $url, string $body, array $headers = []): array
 }
 
 function hamoix_http_get(string $url, array $headers = []): array {
-    if (!hamoix_safe_panel_url($url)) return ['ok' => false, 'error' => 'آدرس پنل نامعتبر یا غیرمجاز است', 'code' => 0, 'body' => ''];
-    if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL در PHP نیست', 'code' => 0, 'body' => ''];
+    if (!hamoix_safe_panel_url($url)) return ['ok' => false, 'error' => 'آدرس پنل نامعتبر یا غیرمجاز است', 'code' => 0, 'body' => '', 'cookies' => []];
+    if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL در PHP نیست', 'code' => 0, 'body' => '', 'cookies' => []];
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL            => $url,
@@ -272,12 +272,23 @@ function hamoix_http_get(string $url, array $headers = []): array {
         CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.1',
         CURLOPT_HTTPHEADER     => $headers,
     ]);
+    $rawHeaders = '';
+    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($curl, $header) use (&$rawHeaders) {
+        $rawHeaders .= $header;
+        return strlen($header);
+    });
     $respBody = curl_exec($ch);
     $err  = curl_error($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    if ($err) return ['ok' => false, 'error' => $err, 'code' => 0, 'body' => ''];
-    return ['ok' => true, 'error' => '', 'code' => $code, 'body' => (string)$respBody];
+    if ($err) return ['ok' => false, 'error' => $err, 'code' => 0, 'body' => '', 'cookies' => []];
+    $cookies = [];
+    foreach (explode("\n", $rawHeaders) as $line) {
+        if (stripos($line, 'set-cookie:') === 0) {
+            $cookies[] = trim(substr($line, strlen('set-cookie:')));
+        }
+    }
+    return ['ok' => true, 'error' => '', 'code' => $code, 'body' => (string)$respBody, 'cookies' => $cookies];
 }
 
 
@@ -292,8 +303,10 @@ function hamoix_test_panel_auth(string $url, string $username, string $password,
     
     if (in_array($type, ['x-ui_single', 'alireza_single', 's_ui'], true)) {
         if ($type === 'x-ui_single' && $xuiToken !== '') {
+            // Modern Sanaei 3x-ui exposes the token-authenticated client API
+            // under /panel/api/clients/*; this avoids the legacy cookie/CSRF path.
             $rt = hamoix_http_get(
-                $url . '/panel/api/inbounds/list',
+                $url . '/panel/api/clients/list',
                 ['Authorization: Bearer ' . $xuiToken, 'Accept: application/json', 'X-Requested-With: XMLHttpRequest']
             );
             if (!$rt['ok']) {
@@ -314,10 +327,38 @@ function hamoix_test_panel_auth(string $url, string $username, string $password,
         if ($username === '' || $password === '') {
             return ['ok' => true, 'verified' => false, 'message' => 'یوزرنیم یا پسورد خالی است'];
         }
+        // Sanaei 3x-ui v3 protects the login POST with a session CSRF token.
+        // Fetch it first and carry both the session cookie and X-CSRF-Token into
+        // the login request. Older releases without this endpoint still use the
+        // legacy login flow because the token remains optional here.
+        $csrfResp = hamoix_http_get(
+            $url . '/csrf-token',
+            ['Accept: application/json', 'X-Requested-With: XMLHttpRequest']
+        );
+        $csrfToken = '';
+        $csrfCookies = (array)($csrfResp['cookies'] ?? []);
+        if ($csrfResp['ok']) {
+            $csrfJson = json_decode((string)($csrfResp['body'] ?? ''), true);
+            if (is_array($csrfJson) && isset($csrfJson['obj']) && is_string($csrfJson['obj'])) {
+                $csrfToken = trim($csrfJson['obj']);
+            }
+        }
+        $loginHeaders = ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json', 'X-Requested-With: XMLHttpRequest'];
+        if ($csrfToken !== '') {
+            $loginHeaders[] = 'X-CSRF-Token: ' . $csrfToken;
+        }
+        $cookieParts = [];
+        foreach ($csrfCookies as $cookie) {
+            $nameValue = trim(explode(';', (string)$cookie, 2)[0]);
+            if ($nameValue !== '') $cookieParts[] = $nameValue;
+        }
+        if ($cookieParts) {
+            $loginHeaders[] = 'Cookie: ' . implode('; ', $cookieParts);
+        }
         $r = hamoix_http_post(
             $url . '/login',
             http_build_query(['username' => $username, 'password' => $password]),
-            ['Content-Type: application/x-www-form-urlencoded']
+            $loginHeaders
         );
         
         if (!$r['ok']) {
@@ -341,6 +382,12 @@ function hamoix_test_panel_auth(string $url, string $username, string $password,
         
         if ($body !== '' && $r['code'] > 0 && $r['code'] < 500) {
             return ['ok' => true, 'verified' => true, 'message' => 'سرور پاسخ داد (پاسخ غیر-JSON — ورود احتمالاً موفق)'];
+        }
+        if ($r['code'] === 403) {
+            if ($type === 's_ui') {
+                return ['ok' => true, 'verified' => false, 'message' => 'HTTP 403 — نوع پنل S-UI انتخاب شده است. برای پنل MHSanaei 3x-ui گزینهٔ «ثنایی تک پورت (Sanaei single)» را انتخاب کنید.'];
+            }
+            return ['ok' => true, 'verified' => false, 'message' => 'HTTP 403 — پنل نسخهٔ جدید CSRF می‌خواهد؛ پاسخ CSRF یا مسیر پایهٔ پنل بررسی نشد.'];
         }
         return ['ok' => false, 'verified' => false, 'message' => 'سرور پاسخ مناسبی نداد (HTTP ' . $r['code'] . ')'];
     }
