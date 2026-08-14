@@ -463,8 +463,10 @@ if (!function_exists('hamoix_maintenance_is_safe_installer_path')) {
 }
 
 if (!function_exists('hamoix_maintenance_update_source')) {
-    function hamoix_maintenance_update_source(): array
+    function hamoix_maintenance_update_source(int $retryAttempts = 10, int $retryDelay = 5): array
     {
+        $retryAttempts = max(1, min(10, $retryAttempts));
+        $retryDelay = in_array($retryDelay, [5, 10], true) ? $retryDelay : 5;
         $root = realpath(hamoix_maintenance_project_root());
         if ($root === false || !is_dir($root . DIRECTORY_SEPARATOR . '.git')) {
             return ['ok' => false, 'message' => 'این نصب به repository گیت متصل نیست.'];
@@ -615,12 +617,31 @@ if (!function_exists('hamoix_maintenance_update_source')) {
                 return ['ok' => false, 'message' => 'آماده‌سازی فایل تنظیمات برای update ناموفق بود.'];
             }
 
-            $fetch = hamoix_maintenance_exec(
-                $git . ' fetch --prune origin main'
-            );
+            $fetch = ['code' => 1, 'output' => ''];
+            $fetchAttempt = 0;
+            for ($fetchAttempt = 1; $fetchAttempt <= $retryAttempts; $fetchAttempt++) {
+                $fetch = hamoix_maintenance_exec(
+                    $git . ' fetch --prune origin main'
+                );
+                if (($fetch['code'] ?? 1) === 0) {
+                    break;
+                }
+
+                hamoix_maintenance_log_command_error(
+                    'git fetch attempt ' . $fetchAttempt . '/' . $retryAttempts,
+                    $fetch
+                );
+                if ($fetchAttempt < $retryAttempts && function_exists('sleep')) {
+                    sleep($retryDelay);
+                }
+            }
             if (($fetch['code'] ?? 1) !== 0) {
-                hamoix_maintenance_log_command_error('git fetch', $fetch);
-                return ['ok' => false, 'message' => 'دریافت آخرین تغییرات GitHub ناموفق بود.'];
+                return [
+                    'ok' => false,
+                    'backup_id' => $backup['id'] ?? null,
+                    'fetch_attempts' => $fetchAttempt,
+                    'message' => 'دریافت آخرین تغییرات GitHub پس از ' . $fetchAttempt . ' تلاش ناموفق بود؛ update لغو شد.',
+                ];
             }
 
             $merge = hamoix_maintenance_exec(
@@ -646,7 +667,13 @@ if (!function_exists('hamoix_maintenance_update_source')) {
             }
             $composerBin = is_executable('/usr/bin/composer') ? '/usr/bin/composer' : 'composer';
             if ($phpBin === null) {
-                return ['ok' => true, 'warning' => true, 'backup_id' => $backup['id'], 'message' => 'سورس به‌روزرسانی شد؛ PHP CLI برای اجرای Composer پیدا نشد.'];
+                return [
+                    'ok' => true,
+                    'warning' => true,
+                    'backup_id' => $backup['id'],
+                    'fetch_attempts' => $fetchAttempt,
+                    'message' => 'سورس به‌روزرسانی شد؛ PHP CLI برای اجرای Composer پیدا نشد.',
+                ];
             }
 
             $composer = hamoix_maintenance_exec(
@@ -656,10 +683,20 @@ if (!function_exists('hamoix_maintenance_update_source')) {
             );
             if (($composer['code'] ?? 1) !== 0) {
                 hamoix_maintenance_log_command_error('composer install after update', $composer);
-                return ['ok' => true, 'warning' => true, 'backup_id' => $backup['id'], 'message' => 'سورس به‌روزرسانی شد اما نصب Composer کامل نشد.'];
+                return [
+                    'ok' => true,
+                    'warning' => true,
+                    'backup_id' => $backup['id'],
+                    'fetch_attempts' => $fetchAttempt,
+                    'message' => 'سورس به‌روزرسانی شد اما نصب Composer کامل نشد.',
+                ];
             }
 
-            return ['ok' => true, 'backup_id' => $backup['id']];
+            return [
+                'ok' => true,
+                'backup_id' => $backup['id'],
+                'fetch_attempts' => $fetchAttempt,
+            ];
         } finally {
             if (!$sourceUpdated && !empty($localChangeCopies)) {
                 foreach ($localChangeCopies as $file => $copyPath) {

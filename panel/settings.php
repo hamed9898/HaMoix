@@ -46,11 +46,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_action'])
             $maintenanceNoticeType = 'error';
         }
     } elseif ($maintenanceAction === 'update_source') {
-        set_time_limit(300);
-        $updateResult = hamoix_maintenance_update_source();
+        set_time_limit(900);
+        $retryDelayInput = $_POST['maintenance_retry_delay'] ?? 5;
+        $retryAttemptsInput = $_POST['maintenance_retry_attempts'] ?? 10;
+        $retryDelay = is_scalar($retryDelayInput) ? (int)$retryDelayInput : 5;
+        $retryAttempts = is_scalar($retryAttemptsInput) ? (int)$retryAttemptsInput : 10;
+        $retryDelay = in_array($retryDelay, [5, 10], true) ? $retryDelay : 5;
+        $retryAttempts = max(1, min(10, $retryAttempts));
+        $updateResult = hamoix_maintenance_update_source($retryAttempts, $retryDelay);
         if (($updateResult['ok'] ?? false) === true) {
             $maintenanceBackupId = $updateResult['backup_id'] ?? null;
             $maintenanceNotice = (string)($updateResult['message'] ?? 'سورس با موفقیت به‌روزرسانی شد.');
+            if (($updateResult['fetch_attempts'] ?? 1) > 1) {
+                $maintenanceNotice .= ' دریافت GitHub پس از ' . (int)$updateResult['fetch_attempts'] . ' تلاش انجام شد.';
+            }
             $maintenanceNoticeType = !empty($updateResult['warning']) ? 'warning' : 'success';
         } else {
             $maintenanceBackupId = $updateResult['backup_id'] ?? null;
@@ -320,12 +329,22 @@ function hamoix_is_toggle_on($cur, $on, $off) {
                     </div>
                 </div>
                 <p style="margin:0 0 16px; color:var(--text-muted,#9aa4b8); line-height:1.9;">
-                    قبل از هر بروزرسانی از فایل‌های سورس، <code>config.php</code> و دیتابیس backup خارج از ریشهٔ وب ساخته می‌شود. تغییرات محلی خارج از config.php باعث لغو امن update خواهد شد.
+                    قبل از هر بروزرسانی از فایل‌های سورس، <code>config.php</code> و دیتابیس backup خارج از ریشهٔ وب ساخته می‌شود. در صورت اختلال موقت GitHub، دریافت سورس با فاصلهٔ انتخابی دوباره تلاش می‌شود.
                 </p>
                 <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
-                    <form method="post" action="settings.php" onsubmit="return confirm('ابتدا backup ساخته می‌شود و سپس آخرین تغییرات branch اصلی Hamoix دریافت خواهد شد. ادامه می‌دهید؟');">
+                    <form method="post" action="settings.php" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;" onsubmit="return confirm('ابتدا backup ساخته می‌شود و سپس آخرین تغییرات branch اصلی Hamoix دریافت خواهد شد. ادامه می‌دهید؟');">
                         <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                         <input type="hidden" name="maintenance_action" value="update_source">
+                        <label for="maintenance_retry_delay" style="font-size:12px; color:var(--text-muted,#9aa4b8);">فاصله retry</label>
+                        <select id="maintenance_retry_delay" name="maintenance_retry_delay" style="min-width:92px; padding:8px 10px; border-radius:8px;">
+                            <option value="5" selected>۵ ثانیه</option>
+                            <option value="10">۱۰ ثانیه</option>
+                        </select>
+                        <label for="maintenance_retry_attempts" style="font-size:12px; color:var(--text-muted,#9aa4b8);">حداکثر تلاش</label>
+                        <select id="maintenance_retry_attempts" name="maintenance_retry_attempts" style="min-width:82px; padding:8px 10px; border-radius:8px;">
+                            <option value="5">۵ بار</option>
+                            <option value="10" selected>۱۰ بار</option>
+                        </select>
                         <button type="submit" class="btn btn-primary">
                             <?php echo icon('refresh', 'svg-icon svg-sm'); ?>
                             بروزرسانی از GitHub + backup
