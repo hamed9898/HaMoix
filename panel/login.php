@@ -86,6 +86,13 @@ if (isset($_POST['login'])) {
     $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
 
     if ($username !== '' && $password !== '') {
+        if (!($pdo instanceof PDO)) {
+            // Do not turn a missing/failed database connection into a fatal
+            // `prepare() on null`; show a safe message and keep credentials out
+            // of the response. The connection details remain in server logs.
+            $texterrr = 'اتصال دیتابیس برقرار نیست؛ تنظیمات config.php و سرویس MariaDB را بررسی کنید.';
+            error_log('[hamoix] admin login blocked: PDO connection unavailable');
+        } else {
         $query = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
         $query->bindValue(':username', $username, PDO::PARAM_STR);
         $query->execute();
@@ -150,6 +157,7 @@ if (isset($_POST['login'])) {
                 @error_log('Login notify failed: ' . $e->getMessage());
             }
             exit;
+        }
         }
     } else {
         $texterrr = 'نام کاربری یا رمز عبور خالی است.';
