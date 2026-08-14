@@ -35,7 +35,15 @@ register_shutdown_function(static function () use ($panelsCsrfJson): void {
     echo '<script>(function(){var t=' . $panelsCsrfJson . ';var f=window.fetch.bind(window);window.fetch=function(r,o){o=o||{};if(String(o.method||"GET").toUpperCase()==="POST"){o.headers=o.headers||{};if(typeof Headers!=="undefined" && o.headers instanceof Headers){o.headers.set("X-CSRF-Token",t);}else{o.headers["X-CSRF-Token"]=t;}}return f(r,o);};function a(){document.querySelectorAll("form[method=POST],form[method=post]").forEach(function(x){if(!x.querySelector("input[name=_csrf]")){var i=document.createElement("input");i.type="hidden";i.name="_csrf";i.value=t;x.appendChild(i);}});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",a);}else{a();}})();</script>';
 });
 
-
+// The add-panel form historically had name attributes but no matching IDs,
+// while the connection-test script reads those IDs. Add stable IDs after the
+// DOM is ready so both add and edit tests read the same values.
+register_shutdown_function(static function (): void {
+    if (isset($_GET['ajax'])) {
+        return;
+    }
+    echo '<script>(function(){function a(){var f=document.querySelector("#modal-add-panel form");if(!f)return;["url_panel","username_panel","password_panel","type"].forEach(function(n){var e=f.elements.namedItem(n);if(e)e.id=n;});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",a);}else{a();}})();</script>';
+});
 
 $PANEL_TYPES = [
     'marzban'        => 'مرزبان (Marzban)',
@@ -47,7 +55,7 @@ $PANEL_TYPES = [
     'Manualsale'     => 'فروش دستی (Manual sale)',
     'guard'          => 'Guard / GuardCore',
     'WGDashboard'    => 'WGDashboard (WireGuard)',
-    's_ui'           => 's_ui',
+    's_ui'           => 'S-UI (API v2 / Token)',
     'ibsng'          => 'IBSNG',
     'mikrotik'       => 'میکروتیک (MikroTik)',
 ];
