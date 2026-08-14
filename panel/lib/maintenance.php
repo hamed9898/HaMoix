@@ -447,6 +447,21 @@ if (!function_exists('hamoix_maintenance_is_runtime_path')) {
     }
 }
 
+if (!function_exists('hamoix_maintenance_is_safe_installer_path')) {
+    function hamoix_maintenance_is_safe_installer_path(string $path): bool
+    {
+        // The web installer is consumed only during first setup. These exact
+        // tracked files are commonly rewritten by old release installers;
+        // keep a copy in the safety backup, then allow the GitHub version to
+        // replace them during an update. Other installer files remain blocked.
+        return in_array($path, [
+            'installer/domain.php',
+            'installer/index.php',
+            'installer/fonts/Arad-MediumDots2.ttf',
+        ], true);
+    }
+}
+
 if (!function_exists('hamoix_maintenance_update_source')) {
     function hamoix_maintenance_update_source(): array
     {
@@ -497,10 +512,26 @@ if (!function_exists('hamoix_maintenance_update_source')) {
         }
 
         $blockedFiles = [];
+        $installerOverrideFiles = [];
         foreach ($changedFiles as $file) {
-            if ($file !== 'config.php') {
-                $blockedFiles[] = $file;
+            if ($file === 'config.php') {
+                continue;
             }
+
+            // Only the three known installer artifacts may be replaced
+            // automatically, and only when they are tracked by Git. An
+            // untracked file is never deleted implicitly.
+            if (hamoix_maintenance_is_safe_installer_path($file)) {
+                $tracked = hamoix_maintenance_exec(
+                    $git . ' ls-files --error-unmatch -- ' . escapeshellarg($file)
+                );
+                if (($tracked['code'] ?? 1) === 0) {
+                    $installerOverrideFiles[] = $file;
+                    continue;
+                }
+            }
+
+            $blockedFiles[] = $file;
         }
         if (!empty($blockedFiles)) {
             $shownFiles = array_slice($blockedFiles, 0, 5);
@@ -518,7 +549,44 @@ if (!function_exists('hamoix_maintenance_update_source')) {
         $configPath = $root . DIRECTORY_SEPARATOR . 'config.php';
         $configTemp = null;
         $configTracked = false;
+        $localChangeStage = null;
+        $localChangeCopies = [];
+        $sourceUpdated = false;
         try {
+            // Save the known installer customisations in a temporary location
+            // as a second safety net. If fetch/merge fails, restore them so a
+            // failed update never destroys the current installation state.
+            if (!empty($installerOverrideFiles)) {
+                $localChangeStage = hamoix_maintenance_make_temp_dir();
+                if ($localChangeStage === null) {
+                    return ['ok' => false, 'message' => 'فضای موقت نگهداری تغییرات installer ساخته نشد؛ update لغو شد.'];
+                }
+                foreach ($installerOverrideFiles as $file) {
+                    $sourcePath = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file);
+                    if (!is_file($sourcePath)) {
+                        return ['ok' => false, 'message' => 'فایل محلی installer برای backup پیدا نشد؛ update لغو شد.'];
+                    }
+                    $copyPath = $localChangeStage . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file);
+                    $copyDirectory = dirname($copyPath);
+                    if (!is_dir($copyDirectory) && !@mkdir($copyDirectory, 0700, true)) {
+                        return ['ok' => false, 'message' => 'ذخیرهٔ موقت تغییرات installer ممکن نشد؛ update لغو شد.'];
+                    }
+                    if (!@copy($sourcePath, $copyPath)) {
+                        return ['ok' => false, 'message' => 'backup موقت تغییرات installer ناموفق بود؛ update لغو شد.'];
+                    }
+                    @chmod($copyPath, fileperms($sourcePath) & 0777);
+                    $localChangeCopies[$file] = $copyPath;
+                }
+
+                $cleanInstaller = hamoix_maintenance_exec(
+                    $git . ' restore --source=HEAD --staged --worktree -- '
+                    . implode(' ', array_map('escapeshellarg', $installerOverrideFiles))
+                );
+                if (($cleanInstaller['code'] ?? 1) !== 0) {
+                    hamoix_maintenance_log_command_error('temporary installer checkout', $cleanInstaller);
+                    return ['ok' => false, 'message' => 'آماده‌سازی فایل‌های installer برای update ناموفق بود.'];
+                }
+            }
             $tracked = hamoix_maintenance_exec(
                 $git . ' ls-files --error-unmatch -- config.php'
             );
@@ -558,6 +626,7 @@ if (!function_exists('hamoix_maintenance_update_source')) {
                 hamoix_maintenance_log_command_error('git fast-forward', $merge);
                 return ['ok' => false, 'message' => 'به‌روزرسانی امن fast-forward ممکن نشد؛ سورس تغییر نکرد.'];
             }
+            $sourceUpdated = true;
 
             if ($configTemp !== null && is_file($configTemp) && !@copy($configTemp, $configPath)) {
                 return ['ok' => false, 'message' => 'سورس به‌روزرسانی شد اما بازگردانی config.php ناموفق بود؛ backup موجود است.'];
@@ -588,6 +657,17 @@ if (!function_exists('hamoix_maintenance_update_source')) {
 
             return ['ok' => true, 'backup_id' => $backup['id']];
         } finally {
+            if (!$sourceUpdated && !empty($localChangeCopies)) {
+                foreach ($localChangeCopies as $file => $copyPath) {
+                    $sourcePath = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $file);
+                    if (is_file($copyPath) && !@copy($copyPath, $sourcePath)) {
+                        error_log('[hamoix/maintenance] could not restore local installer file: ' . $file);
+                    }
+                }
+            }
+            if ($localChangeStage !== null) {
+                hamoix_maintenance_remove_tree($localChangeStage);
+            }
             if ($configTemp !== null && is_file($configTemp)) {
                 if (!is_file($configPath) || !@copy($configTemp, $configPath)) {
                     error_log('[hamoix/maintenance] could not restore temporary config.php');
