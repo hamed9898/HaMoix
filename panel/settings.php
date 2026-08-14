@@ -53,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_action'])
             $maintenanceNotice = (string)($updateResult['message'] ?? 'سورس با موفقیت به‌روزرسانی شد.');
             $maintenanceNoticeType = !empty($updateResult['warning']) ? 'warning' : 'success';
         } else {
+            $maintenanceBackupId = $updateResult['backup_id'] ?? null;
             $maintenanceNotice = (string)($updateResult['message'] ?? 'به‌روزرسانی سورس ناموفق بود.');
             $maintenanceNoticeType = 'error';
         }

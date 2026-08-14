@@ -469,6 +469,14 @@ if (!function_exists('hamoix_maintenance_update_source')) {
             return ['ok' => false, 'message' => 'به‌روزرسانی فقط روی branch اصلی main مجاز است.'];
         }
 
+        // Create the safety backup before inspecting local changes, so a
+        // blocked update still leaves the administrator with a downloadable
+        // snapshot for review or recovery.
+        $backup = hamoix_maintenance_create_backup();
+        if (!($backup['ok'] ?? false)) {
+            return ['ok' => false, 'message' => 'قبل از update، backup ساخته نشد؛ update لغو شد.'];
+        }
+
         $changedFiles = [];
         foreach ([
             $git . ' diff --name-only',
@@ -502,13 +510,9 @@ if (!function_exists('hamoix_maintenance_update_source')) {
             }
             return [
                 'ok' => false,
+                'backup_id' => $backup['id'] ?? null,
                 'message' => 'ابتدا تغییرات محلی خارج از config.php را backup یا بررسی کنید؛ update لغو شد. فایل(های) مانع: ' . $fileLabel,
             ];
-        }
-
-        $backup = hamoix_maintenance_create_backup();
-        if (!($backup['ok'] ?? false)) {
-            return ['ok' => false, 'message' => 'قبل از update، backup ساخته نشد؛ update لغو شد.'];
         }
 
         $configPath = $root . DIRECTORY_SEPARATOR . 'config.php';
