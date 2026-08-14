@@ -78,6 +78,38 @@ $has_col = function (string $c) use (&$PANEL_COLS): bool {
     return isset($PANEL_COLS[strtolower($c)]);
 };
 
+// Older installations may not have all columns used by the add-panel form.
+// Keep this request self-sufficient instead of relying on table.php having run
+// in the same request before the administrator submits the form.
+$panelSchemaDefinitions = [
+    'code_panel'     => "VARCHAR(200) NULL",
+    'name_panel'     => "VARCHAR(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL",
+    'status'         => "VARCHAR(500) NULL",
+    'url_panel'      => "VARCHAR(2000) NULL",
+    'username_panel' => "VARCHAR(200) NULL",
+    'password_panel' => "VARCHAR(200) NULL",
+    'agent'          => "VARCHAR(200) NULL",
+    'type'           => "VARCHAR(100) NULL",
+    'api_key'        => "VARCHAR(500) NULL",
+    'xui_api_token'  => "VARCHAR(1000) NULL",
+    // The original schema declared this column NOT NULL without a default.
+    // New panel rows must provide it explicitly or strict MariaDB rejects INSERT.
+    'on_hold_test'   => "VARCHAR(60) NOT NULL DEFAULT '1'",
+    'version_panel'  => "VARCHAR(60) NOT NULL DEFAULT '0'",
+];
+foreach ($panelSchemaDefinitions as $column => $definition) {
+    if ($has_col($column) || !($pdo instanceof PDO)) {
+        continue;
+    }
+    try {
+        // The column names and definitions above are fixed source values.
+        $pdo->exec("ALTER TABLE `marzban_panel` ADD COLUMN `{$column}` {$definition}");
+        $PANEL_COLS[strtolower($column)] = true;
+    } catch (\Throwable $e) {
+        error_log('[panel/panels] schema migration failed for ' . $column . ': ' . $e->getMessage());
+    }
+}
+
 // Older installations may have been created before API-key fields were added
 // to the panel schema. Bring only these optional credential columns forward;
 // the INSERT below also remains compatible if the database user cannot ALTER.
@@ -95,6 +127,25 @@ foreach (['api_key' => 'VARCHAR(500) NULL', 'xui_api_token' => 'VARCHAR(1000) NU
     }
 }
 
+
+if (!function_exists('hamoix_panel_public_db_error')) {
+    function hamoix_panel_public_db_error(\Throwable $e): string {
+        $code = 0;
+        if ($e instanceof \PDOException && !empty($e->errorInfo[1])) {
+            $code = (int) $e->errorInfo[1];
+        }
+        if ($code === 1054 || $code === 1364) {
+            return 'ساختار جدول پنل کامل نیست؛ صفحه را یک‌بار refresh کنید و دوباره ثبت را بزنید.';
+        }
+        if ($code === 1062) {
+            return 'پنلی با این شناسه یا نام قبلاً ثبت شده است؛ نام دیگری انتخاب کنید.';
+        }
+        if ($code === 1142 || $code === 1143 || $code === 42000) {
+            return 'کاربر دیتابیس اجازهٔ ثبت پنل را ندارد؛ دسترسی INSERT/ALTER دیتابیس را بررسی کنید.';
+        }
+        return 'خطا در ذخیره‌سازی پنل؛ جزئیات فنی در لاگ سرور ثبت شد.';
+    }
+}
 
 if (!function_exists('hamoix_panel_authlog')) {
     function hamoix_panel_authlog(string $stage, array $data = []): void {
@@ -1047,6 +1098,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($xuiToken !== '') {
                     throw new \RuntimeException('ستون API token در ساختار دیتابیس وجود ندارد و migration آن انجام نشد.');
                 }
+                // `on_hold_test` is NOT NULL without a default in the original
+                // marzban_panel CREATE TABLE. Include both schema defaults so
+                // strict MariaDB/MySQL accepts new rows on fresh installations.
+                if ($has_col('on_hold_test')) {
+                    $insertData['on_hold_test'] = '1';
+                }
+                if ($has_col('version_panel')) {
+                    $insertData['version_panel'] = '0';
+                }
+
+                $requiredInsertColumns = [
+                    'code_panel', 'name_panel', 'status', 'url_panel',
+                    'username_panel', 'password_panel', 'type', 'agent',
+                ];
+                $missingInsertColumns = array_values(array_filter(
+                    $requiredInsertColumns,
+                    static function (string $column) use ($has_col): bool {
+                        return !$has_col($column);
+                    }
+                ));
+                if ($missingInsertColumns) {
+                    throw new \RuntimeException(
+                        'ستون‌های پایهٔ جدول marzban_panel موجود نیستند: ' . implode(', ', $missingInsertColumns)
+                    );
+                }
 
                 $insertColumns = array_keys($insertData);
                 $insertParams = [];
@@ -1072,7 +1148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'flash'        => $flash['ok'],
                 ]);
             } catch (\Throwable $e) {
-                $flash['err'] = 'خطا در افزودن پنل؛ جزئیات در لاگ سرور ثبت شد.';
+                $flash['err'] = hamoix_panel_public_db_error($e);
                 error_log('[panel/panels] add failed: ' . $e->getMessage());
                 hamoix_panel_authlog('ADD_ERROR', ['name' => $namePanel, 'error' => $e->getMessage()]);
             }
