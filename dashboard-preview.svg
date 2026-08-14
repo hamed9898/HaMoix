@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc">
+  <title id="title">Hamoix admin dashboard preview</title>
+  <desc id="desc">A visual preview of the Hamoix Aurora Dark administration dashboard with navigation, sales statistics and a sales chart.</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#11172a"/>
+      <stop offset="0.52" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#080a13"/>
+    </linearGradient>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#202844" stop-opacity=".96"/>
+      <stop offset="1" stop-color="#11172b" stop-opacity=".94"/>
+    </linearGradient>
+    <linearGradient id="surfaceSoft" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".07"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".015"/>
+    </linearGradient>
+    <linearGradient id="welcome" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#44308d"/>
+      <stop offset=".54" stop-color="#5540b7"/>
+      <stop offset="1" stop-color="#126b87"/>
+    </linearGradient>
+    <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6c5ce7" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#6c5ce7" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="blueIcon" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="roseIcon" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f43f5e"/><stop offset="1" stop-color="#be123c"/>
+    </linearGradient>
+    <linearGradient id="greenIcon" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#22c55e"/><stop offset="1" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="purpleIcon" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#a855f7"/><stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+    <filter id="smallShadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".22"/>
+    </filter>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0H0V42" fill="none" stroke="#ffffff" stroke-opacity=".035"/>
+    </pattern>
+    <clipPath id="pageClip"><rect width="1600" height="960" rx="24"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#pageClip)">
+    <rect width="1600" height="960" fill="url(#page)"/>
+    <circle cx="100" cy="95" r="260" fill="#7c5cf6" opacity=".10"/>
+    <circle cx="1500" cy="180" r="220" fill="#22d3ee" opacity=".07"/>
+    <rect width="1600" height="960" fill="url(#grid)"/>
+
+    <!-- fixed app header -->
+    <rect x="0" y="0" width="1600" height="78" fill="#0b1020" fill-opacity=".86" stroke="#94a3b8" stroke-opacity=".14"/>
+    <rect x="35" y="19" width="40" height="40" rx="11" fill="#111a31" stroke="#94a3b8" stroke-opacity=".19"/>
+    <path d="M48 31h15M48 39h15M48 47h15" stroke="#9da9c5" stroke-width="2.4" stroke-linecap="round"/>
+    <rect x="95" y="20" width="38" height="38" rx="11" fill="#3b82f6"/>
+    <path d="M104 34l10-7 10 7v13a2 2 0 0 1-2 2h-16a2 2 0 0 1-2-2zM110 49V38h8v11" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+    <text x="149" y="46" fill="#f3f6ff" font-size="21" font-family="Arial, Tahoma, sans-serif" font-weight="700">پنل <tspan fill="#5f8cff">Hamoix</tspan></text>
+    <rect x="312" y="24" width="185" height="30" rx="15" fill="#121b2d" stroke="#94a3b8" stroke-opacity=".18"/>
+    <circle cx="331" cy="39" r="5" fill="#22c55e"/>
+    <text x="345" y="45" fill="#9da9c5" font-size="13" font-family="Arial, Tahoma, sans-serif">پنل آنلاین — اتصال برقرار</text>
+    <rect x="1418" y="16" width="145" height="46" rx="23" fill="#121b2d" stroke="#94a3b8" stroke-opacity=".14"/>
+    <circle cx="1443" cy="39" r="17" fill="#5540b7" stroke="#a78bfa" stroke-opacity=".65"/>
+    <path d="M1437 44c0-5 12-5 12 0M1440 35a4 4 0 1 0 8 0" fill="none" stroke="#fff" stroke-width="1.6"/>
+    <text x="1550" y="36" text-anchor="end" fill="#f3f6ff" font-size="12" font-family="Arial, Tahoma, sans-serif" font-weight="700">حساب کاربری</text>
+    <text x="1550" y="51" text-anchor="end" fill="#9da9c5" font-size="10" font-family="Arial, Tahoma, sans-serif">admin</text>
+    <path d="M1570 35l5 6 5-6" fill="none" stroke="#9da9c5" stroke-width="1.8"/>
+
+    <!-- right navigation -->
+    <rect x="1280" y="78" width="320" height="882" fill="#0d1426" fill-opacity=".91" stroke="#94a3b8" stroke-opacity=".14"/>
+    <text x="1558" y="119" text-anchor="end" fill="#65718e" font-size="11" font-family="Arial, Tahoma, sans-serif" letter-spacing="1">منوی اصلی</text>
+
+    <g font-family="Arial, Tahoma, sans-serif" font-size="15">
+      <rect x="1300" y="134" width="280" height="48" rx="12" fill="#3b82f6" fill-opacity=".16"/>
+      <rect x="1575" y="147" width="4" height="23" rx="2" fill="#3b82f6"/>
+      <path d="M1323 155l10-8 10 8v12h-7v-7h-6v7h-7z" fill="none" stroke="#5f8cff" stroke-width="2"/>
+      <text x="1550" y="164" text-anchor="end" fill="#79a4ff">صفحه اصلی</text>
+      <g fill="#9da9c5">
+        <path d="M1322 212a8 8 0 0 1 16 0M1319 225c0-6 22-6 22 0" fill="none" stroke="#9da9c5" stroke-width="2"/>
+        <text x="1550" y="218" text-anchor="end">کاربران</text>
+        <path d="M1319 267h20M1319 273h20M1323 259h12" fill="none" stroke="#9da9c5" stroke-width="2"/>
+        <text x="1550" y="275" text-anchor="end">سفارشات</text>
+        <path d="M1319 317l11-6 11 6v12l-11 6-11-6zM1319 317l11 6 11-6M1330 323v12" fill="none" stroke="#9da9c5" stroke-width="1.7"/>
+        <text x="1550" y="326" text-anchor="end">سرویس‌ها</text>
+        <path d="M1319 372h21v21h-21zM1323 376h5v5h-5zM1332 376h5v5h-5zM1323 385h5v5h-5zM1332 385h5v5h-5z" fill="none" stroke="#9da9c5" stroke-width="1.5"/>
+        <text x="1550" y="385" text-anchor="end">محصولات</text>
+        <path d="M1319 429h21v14h-21zM1339 434h4v6h-4" fill="none" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="1550" y="441" text-anchor="end">تراکنش‌ها</text>
+        <path d="M1319 480h21M1319 486h21M1319 492h21" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="1550" y="494" text-anchor="end">لیست درخواست‌ها</text>
+      </g>
+
+      <text x="1558" y="552" text-anchor="end" fill="#65718e" font-size="11" letter-spacing="1">مدیریت</text>
+      <g fill="#9da9c5">
+        <path d="M1319 584h21v16h-21zM1323 580h13M1327 576h5" fill="none" stroke="#9da9c5" stroke-width="1.7"/>
+        <text x="1550" y="596" text-anchor="end">مدیریت پنل‌ها</text>
+        <path d="M1319 629l11-6 11 6v12l-11 6-11-6z" fill="none" stroke="#9da9c5" stroke-width="1.7"/>
+        <text x="1550" y="637" text-anchor="end">انبار شبکه ملی</text>
+        <path d="M1320 681a7 7 0 0 1 14 0M1317 694c0-5 20-5 20 0" fill="none" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="1550" y="691" text-anchor="end">نمایندگان</text>
+        <path d="M1319 730h21M1322 724v17M1337 724v17" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="1550" y="743" text-anchor="end">تنظیمات مالی</text>
+        <path d="M1320 781h19M1320 787h19M1323 775h13" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="1550" y="795" text-anchor="end">کدهای تخفیف</text>
+      </g>
+      <text x="1558" y="849" text-anchor="end" fill="#65718e" font-size="11" letter-spacing="1">پیکربندی</text>
+      <g fill="#9da9c5">
+        <path d="M1320 881h19M1323 875v12M1336 875v12" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="1550" y="888" text-anchor="end">تنظیمات</text>
+      </g>
+    </g>
+    <line x1="1300" y1="914" x2="1580" y2="914" stroke="#94a3b8" stroke-opacity=".14"/>
+    <text x="1432" y="940" text-anchor="end" fill="#65718e" font-size="11" font-family="Arial, Tahoma, sans-serif">نسخه</text>
+    <rect x="1460" y="924" width="54" height="24" rx="7" fill="#06b6d4" fill-opacity=".14" stroke="#06b6d4" stroke-opacity=".28"/>
+    <text x="1487" y="941" text-anchor="middle" fill="#22d3ee" font-size="11" font-family="monospace">v0.0.2</text>
+
+    <!-- main dashboard -->
+    <g transform="translate(58 112)" font-family="Arial, Tahoma, sans-serif">
+      <rect x="0" y="0" width="1178" height="104" rx="21" fill="url(#surfaceSoft)" stroke="#94a3b8" stroke-opacity=".16" filter="url(#smallShadow)"/>
+      <rect x="28" y="27" width="48" height="48" rx="13" fill="#5f5bd9" fill-opacity=".18"/>
+      <path d="M40 49l12-10 12 10v15H55v-8h-6v8H40z" fill="none" stroke="#8d8aff" stroke-width="2.2"/>
+      <text x="101" y="52" fill="#f3f6ff" font-size="25" font-weight="700">داشبورد مدیریت</text>
+      <text x="101" y="76" fill="#9da9c5" font-size="14">آمار سریع از وضعیت ربات و فروش</text>
+      <g transform="translate(815 29)">
+        <rect width="106" height="43" rx="11" fill="#121b2d" stroke="#94a3b8" stroke-opacity=".16"/>
+        <circle cx="28" cy="21" r="8" fill="none" stroke="#9da9c5" stroke-width="1.8"/><path d="M40 27h12" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="91" y="27" text-anchor="end" fill="#c8d0e2" font-size="12">کاربران</text>
+        <rect x="116" width="112" height="43" rx="11" fill="#121b2d" stroke="#94a3b8" stroke-opacity=".16"/>
+        <circle cx="141" cy="21" r="8" fill="none" stroke="#9da9c5" stroke-width="1.8"/><path d="M141 14v14M135 21h12" stroke="#9da9c5" stroke-width="1.5"/>
+        <text x="218" y="27" text-anchor="end" fill="#c8d0e2" font-size="12">سفارشات</text>
+        <rect x="240" width="112" height="43" rx="11" fill="#121b2d" stroke="#94a3b8" stroke-opacity=".16"/>
+        <rect x="267" y="14" width="17" height="13" rx="2" fill="none" stroke="#9da9c5" stroke-width="1.8"/><path d="M284 18h5v6h-5" fill="none" stroke="#9da9c5" stroke-width="1.8"/>
+        <text x="342" y="27" text-anchor="end" fill="#c8d0e2" font-size="12">تراکنش‌ها</text>
+      </g>
+
+      <!-- welcome banner -->
+      <rect x="0" y="126" width="1178" height="144" rx="22" fill="url(#welcome)" filter="url(#smallShadow)"/>
+      <circle cx="70" cy="184" r="96" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="1"/>
+      <circle cx="70" cy="184" r="70" fill="none" stroke="#fff" stroke-opacity=".06" stroke-width="20"/>
+      <text x="1070" y="164" text-anchor="end" fill="#fff" fill-opacity=".80" font-size="12">✦ فضای مدیریت وب‌محور Hamoix</text>
+      <text x="1070" y="199" text-anchor="end" fill="#fff" font-size="25" font-weight="700">همه‌چیز برای مدیریت فروش شما آماده است</text>
+      <text x="1070" y="226" text-anchor="end" fill="#fff" fill-opacity=".82" font-size="14">کاربران، سرویس‌ها، نمایندگان و اتصال به 3x-ui را از یک داشبورد کنترل کنید.</text>
+      <rect x="28" y="177" width="168" height="49" rx="12" fill="#fff"/>
+      <text x="174" y="207" text-anchor="end" fill="#44308d" font-size="13" font-weight="700">مشاهده سرویس‌ها</text>
+      <path d="M50 201h14M50 201l6-6M50 201l6 6" fill="none" stroke="#44308d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- stat cards -->
+      <g transform="translate(0 294)">
+        <g filter="url(#smallShadow)">
+          <rect width="280" height="112" rx="19" fill="url(#surface)" stroke="#94a3b8" stroke-opacity=".16"/>
+          <rect x="20" y="27" width="58" height="58" rx="15" fill="url(#blueIcon)"/>
+          <circle cx="49" cy="48" r="10" fill="none" stroke="#fff" stroke-width="2"/><path d="M34 72c0-9 30-9 30 0M55 39a9 9 0 0 1 9 9" fill="none" stroke="#fff" stroke-width="2"/>
+          <text x="250" y="55" text-anchor="end" fill="#f3f6ff" font-size="25" font-weight="700">۱۲٬۸۴۰</text>
+          <text x="250" y="79" text-anchor="end" fill="#9da9c5" font-size="12">تعداد کل کاربران</text>
+        </g>
+        <g transform="translate(300 0)" filter="url(#smallShadow)">
+          <rect width="280" height="112" rx="19" fill="url(#surface)" stroke="#94a3b8" stroke-opacity=".16"/>
+          <rect x="20" y="27" width="58" height="58" rx="15" fill="url(#roseIcon)"/>
+          <path d="M34 42h28l-3 30H37zM41 42c0-10 14-10 14 0" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+          <text x="250" y="55" text-anchor="end" fill="#f3f6ff" font-size="25" font-weight="700">۳٬۲۶۱</text>
+          <text x="250" y="79" text-anchor="end" fill="#9da9c5" font-size="12">تعداد کل سفارشات</text>
+        </g>
+        <g transform="translate(600 0)" filter="url(#smallShadow)">
+          <rect width="280" height="112" rx="19" fill="url(#surface)" stroke="#94a3b8" stroke-opacity=".16"/>
+          <rect x="20" y="27" width="58" height="58" rx="15" fill="url(#greenIcon)"/>
+          <path d="M49 37v36M59 44h-16a7 7 0 0 0 0 14h12a7 7 0 0 1 0 14H39" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+          <text x="250" y="53" text-anchor="end" fill="#f3f6ff" font-size="22" font-weight="700">۸۶٬۴۲۰٬۰۰۰ <tspan fill="#9da9c5" font-size="11" font-weight="400">تومان</tspan></text>
+          <text x="250" y="79" text-anchor="end" fill="#9da9c5" font-size="12">جمع کل فروش</text>
+        </g>
+        <g transform="translate(900 0)" filter="url(#smallShadow)">
+          <rect width="278" height="112" rx="19" fill="url(#surface)" stroke="#94a3b8" stroke-opacity=".16"/>
+          <rect x="20" y="27" width="58" height="58" rx="15" fill="url(#purpleIcon)"/>
+          <circle cx="49" cy="47" r="9" fill="none" stroke="#fff" stroke-width="2"/><path d="M34 72c0-9 30-9 30 0M60 38v15M52 46h16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+          <text x="248" y="55" text-anchor="end" fill="#f3f6ff" font-size="25" font-weight="700">۱۸۷</text>
+          <text x="248" y="79" text-anchor="end" fill="#9da9c5" font-size="12">کاربران جدید (۲۴ ساعت)</text>
+        </g>
+      </g>
+
+      <!-- chart panel -->
+      <g transform="translate(0 434)" filter="url(#shadow)">
+        <rect width="1178" height="386" rx="21" fill="url(#surface)" stroke="#94a3b8" stroke-opacity=".16"/>
+        <rect width="1178" height="45" rx="21" fill="#ffffff" fill-opacity=".025"/>
+        <circle cx="26" cy="22" r="5" fill="#ff5f56"/><circle cx="43" cy="22" r="5" fill="#ffbd2e"/><circle cx="60" cy="22" r="5" fill="#27c93f"/>
+        <path d="M1100 76h-18" stroke="#6c5ce7" stroke-width="3" stroke-linecap="round"/>
+        <text x="1072" y="83" text-anchor="end" fill="#f3f6ff" font-size="17" font-weight="700">⌁  نمودار فروش ۷ روز اخیر</text>
+        <line x1="28" y1="103" x2="1150" y2="103" stroke="#94a3b8" stroke-opacity=".12"/>
+        <g transform="translate(28 119)">
+          <rect width="1122" height="42" rx="12" fill="#0b1121" fill-opacity=".55" stroke="#94a3b8" stroke-opacity=".12"/>
+          <rect x="805" y="6" width="112" height="30" rx="8" fill="#6c5ce7" fill-opacity=".20" stroke="#6c5ce7" stroke-opacity=".55"/>
+          <text x="900" y="26" text-anchor="end" fill="#b6aaff" font-size="12">۱ هفته اخیر</text>
+          <text x="1012" y="26" text-anchor="end" fill="#9da9c5" font-size="12">۲۴ ساعت اخیر</text>
+          <text x="1096" y="26" text-anchor="end" fill="#9da9c5" font-size="12">۳ ماه اخیر</text>
+          <rect x="23" y="7" width="100" height="28" rx="8" fill="#111a31" stroke="#94a3b8" stroke-opacity=".16"/>
+          <text x="75" y="25" text-anchor="middle" fill="#9da9c5" font-size="11">تعداد روز</text>
+          <circle cx="1072" cy="21" r="4" fill="#9da9c5"/>
+        </g>
+        <g transform="translate(28 183)">
+          <line x1="72" y1="18" x2="1135" y2="18" stroke="#94a3b8" stroke-opacity=".09" stroke-dasharray="3 7"/>
+          <line x1="72" y1="60" x2="1135" y2="60" stroke="#94a3b8" stroke-opacity=".09" stroke-dasharray="3 7"/>
+          <line x1="72" y1="102" x2="1135" y2="102" stroke="#94a3b8" stroke-opacity=".09" stroke-dasharray="3 7"/>
+          <line x1="72" y1="144" x2="1135" y2="144" stroke="#94a3b8" stroke-opacity=".09" stroke-dasharray="3 7"/>
+          <text x="61" y="22" text-anchor="end" fill="#9da9c5" font-size="11">۲۵M</text>
+          <text x="61" y="64" text-anchor="end" fill="#9da9c5" font-size="11">۱۸M</text>
+          <text x="61" y="106" text-anchor="end" fill="#9da9c5" font-size="11">۱۲M</text>
+          <text x="61" y="148" text-anchor="end" fill="#9da9c5" font-size="11">۰</text>
+          <path d="M72 144 C145 130 168 105 245 117 S343 91 422 106 S525 61 600 84 S700 35 780 61 S885 50 950 68 S1050 26 1135 43 L1135 144 L72 144Z" fill="url(#chartFill)"/>
+          <path d="M72 144 C145 130 168 105 245 117 S343 91 422 106 S525 61 600 84 S700 35 780 61 S885 50 950 68 S1050 26 1135 43" fill="none" stroke="#7b6af0" stroke-width="3" stroke-linecap="round"/>
+          <g fill="#8d80ff" stroke="#11172b" stroke-width="3">
+            <circle cx="72" cy="144" r="5"/><circle cx="245" cy="117" r="5"/><circle cx="422" cy="106" r="5"/><circle cx="600" cy="84" r="5"/><circle cx="780" cy="61" r="5"/><circle cx="950" cy="68" r="5"/><circle cx="1135" cy="43" r="5"/>
+          </g>
+          <g fill="#9da9c5" font-size="11">
+            <text x="72" y="174" text-anchor="middle">۰۳/۱۰</text><text x="245" y="174" text-anchor="middle">۰۳/۱۱</text><text x="422" y="174" text-anchor="middle">۰۳/۱۲</text><text x="600" y="174" text-anchor="middle">۰۳/۱۳</text><text x="780" y="174" text-anchor="middle">۰۳/۱۴</text><text x="950" y="174" text-anchor="middle">۰۳/۱۵</text><text x="1135" y="174" text-anchor="middle">امروز</text>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+  <rect x="1" y="1" width="1598" height="958" rx="24" fill="none" stroke="#ffffff" stroke-opacity=".10" stroke-width="2"/>
+</svg>
