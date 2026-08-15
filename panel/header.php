@@ -176,6 +176,7 @@ $__themeStylePath = basename(dirname($_SERVER['SCRIPT_NAME'] ?? '')) === 'resell
     <ul class="sidebar-menu">
         <li><a href="index.php"><span class="menu-symbol"><?php echo icon('home', 'svg-icon svg-sm'); ?></span><span>صفحه اصلی</span></a></li>
         <li><a href="users.php"><span class="menu-symbol"><?php echo icon('users', 'svg-icon svg-sm'); ?></span><span>کاربران</span></a></li>
+        <li><a href="sell.php"><span class="menu-symbol"><?php echo icon('cart-shopping', 'svg-icon svg-sm'); ?></span><span>فروش مستقیم</span></a></li>
         <li><a href="invoice.php"><span class="menu-symbol"><?php echo icon('dollar-sign', 'svg-icon svg-sm'); ?></span><span>سفارشات</span></a></li>
         <li><a href="service.php"><span class="menu-symbol"><?php echo icon('package', 'svg-icon svg-sm'); ?></span><span>سرویس‌ها</span></a></li>
         <li><a href="product.php"><span class="menu-symbol"><?php echo icon('grid', 'svg-icon svg-sm'); ?></span><span>محصولات</span></a></li>
