@@ -160,7 +160,8 @@ function addinboundalireza($namepanel, $usernameac, $Port, $Expire,$Total, $Uuid
                 "totalGB" => $Total,
                 "expiryTime" => $Expire,
                 "enable" => true,
-                "tgId" => "",
+                // Sanaei expects tgId to be an int64; zero means no Telegram binding.
+                "tgId" => 0,
                 "subId" => $subId,
                 "reset" => 0
             )),

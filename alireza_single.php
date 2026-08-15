@@ -99,7 +99,8 @@ function addClientalireza_singel($namepanel, $usernameac, $Expire,$Total, $Uuid,
                 "totalGB" => $Total,
                 "expiryTime" => $Expire,
                 "enable" => true,
-                "tgId" => "",
+                // Sanaei expects tgId to be an int64; zero means no Telegram binding.
+                "tgId" => 0,
                 "subId" => $subid,
                 "reset" => 0
             )),

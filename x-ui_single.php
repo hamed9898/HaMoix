@@ -36,6 +36,35 @@ if (!function_exists('xui_bytes_to_gb')) {
     }
 }
 
+if (!function_exists('xui_normalize_inbound_ids')) {
+    /** Return positive inbound IDs from a scalar, CSV value, JSON array, or PHP array. */
+    function xui_normalize_inbound_ids($value)
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            $decoded = $trimmed === '' ? null : json_decode($trimmed, true);
+            if (is_array($decoded)) {
+                $value = $decoded;
+            } else {
+                $value = preg_split('/[,\\s]+/', $trimmed, -1, PREG_SPLIT_NO_EMPTY);
+            }
+        }
+        if (!is_array($value)) {
+            $value = array($value);
+        }
+        $ids = array();
+        foreach ($value as $item) {
+            if (is_int($item) || (is_string($item) && preg_match('/^\\d+$/', trim($item)))) {
+                $id = (int) $item;
+                if ($id > 0 && !in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+        }
+        return $ids;
+    }
+}
+
 if (!function_exists('xui_panel_uses_token')) {
     function xui_panel_uses_token($panel)
     {
@@ -62,30 +91,66 @@ if (!function_exists('xui_api_token_request')) {
     function xui_api_token_request($panel, $method, $path, $jsonBody = null, $timeout = 8)
     {
         $base = rtrim((string) ($panel['url_panel'] ?? ''), '/');
-        $req = new CurlRequest($base . $path);
+        $token = xui_panel_token($panel);
+        if ($base === '' || $token === '') {
+            return array(
+                'status' => 0,
+                'body' => '',
+                'error' => 'اطلاعات API پنل 3x-ui کامل نیست.'
+            );
+        }
+
+        $req = new CurlRequest($base . '/' . ltrim((string) $path, '/'));
         $req->setTimeout($timeout);
-        $req->setBearerToken(xui_panel_token($panel));
+        $req->setBearerToken($token);
         $headers = array('Accept: application/json', 'X-Requested-With: XMLHttpRequest');
         if ($jsonBody !== null) {
             $headers[] = 'Content-Type: application/json';
         }
         $req->setHeaders($headers);
 
-        $method = strtoupper($method);
+        $method = strtoupper((string) $method);
         if ($method === 'GET') {
             $resp = $req->get();
         } else {
-            $payload = $jsonBody === null
-                ? ''
-                : (is_string($jsonBody) ? $jsonBody : json_encode($jsonBody));
+            $payload = '';
+            if ($jsonBody !== null) {
+                if (is_string($jsonBody)) {
+                    $payload = $jsonBody;
+                } else {
+                    $payload = json_encode($jsonBody, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    if ($payload === false) {
+                        return array(
+                            'status' => 0,
+                            'body' => '',
+                            'error' => 'ساخت JSON درخواست پنل ناموفق بود.'
+                        );
+                    }
+                }
+            }
             $resp = $req->post($payload);
         }
 
-        if (isset($resp['body']) && is_string($resp['body'])) {
+        $status = (int) ($resp['status'] ?? 0);
+        $decoded = null;
+        if (isset($resp['body']) && is_string($resp['body']) && trim($resp['body']) !== '') {
             $decoded = json_decode($resp['body'], true);
-            if (is_array($decoded) && array_key_exists('success', $decoded) && $decoded['success'] === false) {
-                $resp['error'] = $decoded['msg'] ?? 'Unknown panel error';
-            }
+        }
+
+        if (!empty($resp['error'])) {
+            return $resp;
+        }
+        if ($status < 200 || $status >= 300) {
+            $message = is_array($decoded)
+                ? ($decoded['msg'] ?? $decoded['message'] ?? $decoded['detail'] ?? '')
+                : '';
+            $resp['error'] = $message !== ''
+                ? (string) $message
+                : 'پاسخ ناموفق از پنل 3x-ui (HTTP ' . $status . ').';
+        } elseif (is_array($decoded) && array_key_exists('success', $decoded) && $decoded['success'] === false) {
+            $resp['error'] = (string) ($decoded['msg'] ?? $decoded['message'] ?? 'عملیات در پنل 3x-ui ناموفق بود.');
+        } elseif ($status === 0 || !is_array($decoded)) {
+            $resp['error'] = 'پاسخ نامعتبر از پنل 3x-ui دریافت شد.';
         }
 
         return $resp;
@@ -637,6 +702,14 @@ function get_clinets($username, $namepanel)
 function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subid, $inboundid, $name_product, $note = "")
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    if (!is_array($marzban_list_get)) {
+        return array('status' => 404, 'body' => '', 'error' => 'پنل 3x-ui پیدا نشد.');
+    }
+    $inboundIds = xui_normalize_inbound_ids($inboundid);
+    if (!$inboundIds) {
+        return array('status' => 422, 'body' => '', 'error' => 'شناسه inbound پنل معتبر نیست.');
+    }
+    $inboundid = $inboundIds[0];
     if (!xui_panel_uses_token($marzban_list_get)) {
         login($marzban_list_get['code_panel']);
     }
@@ -670,7 +743,8 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
             "totalGB" => xui_bytes_to_gb($Total),
             "expiryTime" => $timeservice,
             "enable" => true,
-            "tgId" => "",
+            // Sanaei's API model declares tgId as int64; zero means no Telegram binding.
+            "tgId" => 0,
             "subId" => $subid,
             "limitIp" => 0,
             "reset" => 0,
@@ -688,12 +762,12 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
             '/panel/api/clients/add',
             array(
                 'client' => $client,
-                'inboundIds' => array(intval($inboundid)),
+                'inboundIds' => $inboundIds,
             )
         );
     }
     $config = array(
-        "id" => intval($inboundid),
+        "id" => $inboundid,
         'settings' => json_encode(array(
             'clients' => array(
                 array(
@@ -703,7 +777,8 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
                     "totalGB" => xui_bytes_to_gb($Total),
                     "expiryTime" => $timeservice,
                     "enable" => true,
-                    "tgId" => "",
+                    // Sanaei's API model declares tgId as int64; zero means no Telegram binding.
+                    "tgId" => 0,
                     "subId" => $subid,
                     "reset" => 0,
                     "comment" => $note
@@ -745,6 +820,21 @@ function updateClient($namepanel, $uuid, array $config)
                 'status' => 500,
                 'body' => json_encode(array('success' => false, 'msg' => 'client email missing')),
             );
+        }
+        // Older panels may return numeric fields as strings (or tgId as an
+        // empty string). Sanaei's current Go model requires integer JSON values.
+        foreach (array('tgId', 'limitIp', 'reset', 'totalGB', 'expiryTime') as $numericField) {
+            if (array_key_exists($numericField, $client)) {
+                $client[$numericField] = is_numeric($client[$numericField])
+                    ? (int) $client[$numericField]
+                    : 0;
+            }
+        }
+        if (!array_key_exists('tgId', $client)) {
+            $client['tgId'] = 0;
+        }
+        if (isset($client['enable'])) {
+            $client['enable'] = (bool) $client['enable'];
         }
         if (isset($client['flow']) && $client['flow'] === '') {
             unset($client['flow']);

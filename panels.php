@@ -51,7 +51,7 @@ class ManagePanel
             $Output['msg'] = 'Panel Not Found';
             return $Output;
         }
-        if ($Get_Data_Panel['subvip'] == "onsubvip") {
+        if (($Get_Data_Panel['subvip'] ?? '') == "onsubvip") {
             $inoice = select("invoice", "*", "username", $usernameC, "select");
         } else {
             $inoice = false;
@@ -71,9 +71,21 @@ class ManagePanel
             }
             $Get_Data_Product['data_limit_reset'] = "no_reset";
         }
-        $expire = $Data_Config['expire'];
-        $data_limit = $Data_Config['data_limit'];
-        $note = "{$Data_Config['from_id']} | {$Data_Config['username']} | {$Data_Config['type']}";
+        if (!is_array($Get_Data_Product)) {
+            return array(
+                'status' => 'Unsuccessful',
+                'msg' => 'محصول انتخاب‌شده برای این پنل پیدا نشد.'
+            );
+        }
+        $expire = max(0, (int) ($Data_Config['expire'] ?? 0));
+        $data_limit = max(0, (int) ($Data_Config['data_limit'] ?? 0));
+        $note = implode(' | ', array_map(static function ($value) {
+            return trim((string) $value);
+        }, array(
+            $Data_Config['from_id'] ?? '',
+            $Data_Config['username'] ?? '',
+            $Data_Config['type'] ?? ''
+        )));
         if ($Get_Data_Panel['type'] == "marzban") {
 
             $ConnectToPanel = adduser($Get_Data_Panel['name_panel'], $data_limit, $usernameC, $expire, $note, $Get_Data_Product['data_limit_reset'], $Get_Data_Product['name_product']);
@@ -166,22 +178,37 @@ class ManagePanel
                 $inbounds = $Get_Data_Panel['inboundid'];
             }
             $data_Output = addClient($Get_Data_Panel['name_panel'], $usernameC, $expire, $data_limit, generateUUID(), "", $subId, $inbounds, $Get_Data_Product['name_product'], $note);
+            if (!is_array($data_Output)) {
+                return array(
+                    'status' => 'Unsuccessful',
+                    'msg' => 'پاسخ نامعتبر از پنل 3x-ui دریافت شد.'
+                );
+            }
             if (!empty($data_Output['error'])) {
                 return array(
                     'status' => 'Unsuccessful',
-                    'msg' => $data_Output['error']
+                    'msg' => (string) $data_Output['error']
                 );
-            } elseif (!empty($data_Output['status']) && $data_Output['status'] != 200) {
+            }
+            $responseStatus = (int) ($data_Output['status'] ?? 0);
+            if ($responseStatus < 200 || $responseStatus >= 300) {
                 return array(
                     'status' => 'Unsuccessful',
-                    'msg' => $data_Output['status']
+                    'msg' => 'پاسخ ناموفق از پنل 3x-ui (HTTP ' . $responseStatus . ').'
                 );
+            }
+            $decodedResponse = json_decode((string) ($data_Output['body'] ?? ''), true);
+            if (!is_array($decodedResponse) || !array_key_exists('success', $decodedResponse)) {
+                return array(
+                    'status' => 'Unsuccessful',
+                    'msg' => 'ساختار پاسخ ساخت سرویس از پنل 3x-ui نامعتبر است.'
+                );
+            }
+            $data_Output = $decodedResponse;
+            if (!$data_Output['success']) {
+                $Output['status'] = 'Unsuccessful';
+                $Output['msg'] = (string) ($data_Output['msg'] ?? 'عملیات ساخت سرویس در پنل ناموفق بود.');
             } else {
-                $data_Output = json_decode($data_Output['body'], true);
-                if (!$data_Output['success']) {
-                    $Output['status'] = 'Unsuccessful';
-                    $Output['msg'] = $data_Output['msg'];
-                } else {
                     $subscriptionUrl = rtrim($Get_Data_Panel['linksubx'], '/') . "/{$subId}";
                     $singleLink = get_single_link_after_create(
                         $Get_Data_Panel['url_panel'],
