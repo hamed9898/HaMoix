@@ -137,6 +137,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':ts'    => (string) time(),
         ':exp'   => $expire > 0 ? (string) $expire : '',
     ]);
+    hamoix_quota_register(
+        $pdo,
+        $panelName,
+        (string) $out['username'],
+        $dataLimit,
+        $product['inbounds'] ?? [],
+        'reseller',
+        (string) $subToken
+    );
 
     reseller_flash_set('success', 'سرویس با موفقیت ساخته شد و از کیف پول شما کسر گردید.');
     header('Location: subscription.php?token=' . $subToken);

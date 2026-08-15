@@ -33,6 +33,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once __DIR__ . '/../../config.php';
+require_once __DIR__ . '/../lib/quota.php';
 require_once __DIR__ . '/../lib/icons.php';
 if (is_file(__DIR__ . '/../../jdf.php')) {
     require_once __DIR__ . '/../../jdf.php';
@@ -125,11 +126,24 @@ if (!function_exists('reseller_csrf_check')) {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             return;
         }
-        $incoming = $_POST['_csrf'] ?? '';
-        if (!is_string($incoming) || !hash_equals((string) ($_SESSION['reseller_csrf'] ?? ''), $incoming)) {
+        $incoming = $_POST['_csrf'] ?? ($_POST['csrf_token'] ?? '');
+        if (!is_string($incoming) || $incoming === '') {
             http_response_code(403);
-            exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+            exit('درخواست نامعتبر — توکن CSRF لازم است');
         }
+        $validTokens = [];
+        foreach (['reseller_csrf', 'hamoix_csrf', 'csrf_token'] as $key) {
+            if (!empty($_SESSION[$key]) && is_string($_SESSION[$key])) {
+                $validTokens[] = $_SESSION[$key];
+            }
+        }
+        foreach ($validTokens as $validToken) {
+            if (hash_equals($validToken, $incoming)) {
+                return;
+            }
+        }
+        http_response_code(403);
+        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
     }
 }
 
@@ -626,6 +640,15 @@ if (!function_exists('reseller_provision_service')) {
             ':ts'    => (string) time(),
             ':exp'   => $expire > 0 ? (string) $expire : '',
         ]);
+        hamoix_quota_register(
+            $pdo,
+            (string) $panelName,
+            (string) $out['username'],
+            $dataLimit,
+            $product['inbounds'] ?? [],
+            (string) ($opts['sold_via'] ?? 'reseller'),
+            (string) $subToken
+        );
 
         return [
             'ok'         => true,

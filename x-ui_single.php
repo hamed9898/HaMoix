@@ -319,6 +319,107 @@ function panel_get_inbounds_list($baseUrl)
     return $req->get();
 }
 
+if (!function_exists('xui_get_inbounds')) {
+    /** Return normalized inbound choices for the product editor. */
+    function xui_get_inbounds(array $panel): array
+    {
+        $response = null;
+        if (xui_panel_uses_token($panel)) {
+            $response = xui_api_token_request($panel, 'GET', '/panel/api/inbounds/list', null, 8);
+        } else {
+            if (empty($panel['code_panel'])) {
+                return [];
+            }
+            login((string) $panel['code_panel'], false);
+            $response = panel_get_inbounds_list((string) ($panel['url_panel'] ?? ''));
+        }
+        if (!is_array($response) || !empty($response['error'])) {
+            return [];
+        }
+        $decoded = json_decode((string) ($response['body'] ?? ''), true);
+        if (!is_array($decoded) || ($decoded['success'] ?? false) !== true || !is_array($decoded['obj'] ?? null)) {
+            return [];
+        }
+        $out = [];
+        foreach ($decoded['obj'] as $inbound) {
+            if (!is_array($inbound) || !isset($inbound['id']) || (int) $inbound['id'] <= 0) {
+                continue;
+            }
+            $out[] = [
+                'id' => (int) $inbound['id'],
+                'remark' => (string) ($inbound['remark'] ?? $inbound['tag'] ?? ('Inbound #' . (int) $inbound['id'])),
+                'protocol' => (string) ($inbound['protocol'] ?? ''),
+                'port' => (int) ($inbound['port'] ?? 0),
+            ];
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('xui_get_aggregate_usage')) {
+    /**
+     * Sum upload/download usage for one email across the selected inbounds.
+     * The list endpoint exposes clientStats per inbound and is the only safe
+     * way to avoid treating the first matching inbound as the whole service.
+     */
+    function xui_get_aggregate_usage($username, $panelName, $inboundIds = []): ?int
+    {
+        $panel = select('marzban_panel', '*', 'name_panel', (string) $panelName, 'select');
+        if (!is_array($panel)) {
+            return null;
+        }
+        $response = null;
+        if (xui_panel_uses_token($panel)) {
+            $response = xui_api_token_request($panel, 'GET', '/panel/api/inbounds/list', null, 8);
+        } else {
+            if (empty($panel['code_panel'])) {
+                return null;
+            }
+            login((string) $panel['code_panel'], false);
+            $response = panel_get_inbounds_list((string) ($panel['url_panel'] ?? ''));
+        }
+        if (!is_array($response) || !empty($response['error'])) {
+            return null;
+        }
+        $decoded = json_decode((string) ($response['body'] ?? ''), true);
+        if (!is_array($decoded) || ($decoded['success'] ?? false) !== true || !is_array($decoded['obj'] ?? null)) {
+            return null;
+        }
+
+        $wanted = array_flip(xui_normalize_inbound_ids($inboundIds));
+        $found = false;
+        $used = 0;
+        foreach ($decoded['obj'] as $inbound) {
+            if (!is_array($inbound) || !isset($inbound['id'])) {
+                continue;
+            }
+            $inboundId = (int) $inbound['id'];
+            if ($wanted && !isset($wanted[$inboundId])) {
+                continue;
+            }
+            $stats = $inbound['clientStats'] ?? [];
+            if (!is_array($stats)) {
+                continue;
+            }
+            foreach ($stats as $stat) {
+                if (!is_array($stat) || (string) ($stat['email'] ?? '') !== (string) $username) {
+                    continue;
+                }
+                $found = true;
+                $up = $stat['up'] ?? $stat['upload'] ?? 0;
+                $down = $stat['down'] ?? $stat['download'] ?? 0;
+                if (is_numeric($up)) {
+                    $used += max(0, (int) $up);
+                }
+                if (is_numeric($down)) {
+                    $used += max(0, (int) $down);
+                }
+            }
+        }
+        return $found ? $used : null;
+    }
+}
+
 function find_uuid_by_email_in_list($jsonList, $email)
 {
     $j = json_decode($jsonList, true);
@@ -616,21 +717,27 @@ function get_single_link_smart($panelBase, $inboundId, $subscriptionUrl, $userna
     if ($panelCode) {
         login($panelCode);
     }
-    $inb = panel_get_inbound($panelBase, $inboundId);
-    if (!$inb) {
-        return null;
-    }
     $path = parse_url($subscriptionUrl, PHP_URL_PATH) ?: '';
     $subId = basename($path);
     if (!$subId) {
         return null;
     }
-    $client = find_client_by_subId($inb, $subId);
-    if (!$client) {
-        return null;
-    }
+    $inboundIds = xui_normalize_inbound_ids($inboundId);
     $host = parse_url($subscriptionUrl, PHP_URL_HOST) ?: 'localhost';
-    return build_vless_link_from_inbound($inb, $client, $host);
+    foreach ($inboundIds as $candidateInboundId) {
+        $inb = panel_get_inbound($panelBase, $candidateInboundId);
+        if (!$inb) {
+            continue;
+        }
+        $client = find_client_by_subId($inb, $subId);
+        if ($client) {
+            $link = build_vless_link_from_inbound($inb, $client, $host);
+            if ($link) {
+                return $link;
+            }
+        }
+    }
+    return null;
 }
 
 function get_single_link_after_create($panelBase, $inboundId, $subscriptionUrl, $username, $panelName, $panelCode = null)
@@ -736,11 +843,15 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
             $timeservice = $Expire * 1000;
         }
     }
+    // With multiple inbounds, Hamoix owns one aggregate quota. Keep the
+    // per-inbound 3x-ui limit unlimited so ten records do not each advertise
+    // the full purchased volume; the cron quota check sums them together.
+    $apiTotalGb = count($inboundIds) > 1 ? 0 : xui_bytes_to_gb($Total);
     if (xui_panel_uses_token($marzban_list_get)) {
         $client = array(
             "id" => $Uuid,
             "email" => $usernameac,
-            "totalGB" => xui_bytes_to_gb($Total),
+            "totalGB" => $apiTotalGb,
             "expiryTime" => $timeservice,
             "enable" => true,
             // Sanaei's API model declares tgId as int64; zero means no Telegram binding.
@@ -766,45 +877,67 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
             )
         );
     }
-    $config = array(
-        "id" => $inboundid,
-        'settings' => json_encode(array(
-            'clients' => array(
-                array(
-                    "id" => $Uuid,
-                    "flow" => $Flow,
-                    "email" => $usernameac,
-                    "totalGB" => xui_bytes_to_gb($Total),
-                    "expiryTime" => $timeservice,
-                    "enable" => true,
-                    // Sanaei's API model declares tgId as int64; zero means no Telegram binding.
-                    "tgId" => 0,
-                    "subId" => $subid,
-                    "reset" => 0,
-                    "comment" => $note
-                )
-            ),
-            'decryption' => 'none',
-            'fallbacks' => array(),
-        ))
-    );
-    if (!isset($usernameac))
+    if (!isset($usernameac)) {
         return array(
             'status' => 500,
             'msg' => 'username is null'
         );
-    $configpanel = json_encode($config, true);
+    }
+    $clientPayload = array(
+        "id" => $Uuid,
+        "flow" => $Flow,
+        "email" => $usernameac,
+        "totalGB" => $apiTotalGb,
+        "expiryTime" => $timeservice,
+        "enable" => true,
+        // Sanaei's API model declares tgId as int64; zero means no Telegram binding.
+        "tgId" => 0,
+        "subId" => $subid,
+        "reset" => 0,
+        "comment" => $note
+    );
     $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/addClient';
     $headers = array(
         'Accept: application/json',
         'Content-Type: application/json',
     );
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setCookie(xuisingle_cookie_path());
-    $response = $req->post($configpanel);
+    $lastResponse = array('status' => 0, 'body' => '', 'error' => 'پاسخی از پنل دریافت نشد.');
+    $createdInboundIds = array();
+    foreach ($inboundIds as $currentInboundId) {
+        $config = array(
+            "id" => $currentInboundId,
+            'settings' => json_encode(array(
+                'clients' => array($clientPayload),
+                'decryption' => 'none',
+                'fallbacks' => array(),
+            ))
+        );
+        $configpanel = json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $req = new CurlRequest($url);
+        $req->setHeaders($headers);
+        $req->setCookie(xuisingle_cookie_path());
+        $lastResponse = $req->post($configpanel);
+        $decoded = json_decode((string) ($lastResponse['body'] ?? ''), true);
+        $ok = is_array($lastResponse)
+            && empty($lastResponse['error'])
+            && (int) ($lastResponse['status'] ?? 0) >= 200
+            && (int) ($lastResponse['status'] ?? 0) < 300
+            && (!is_array($decoded) || !array_key_exists('success', $decoded) || $decoded['success'] === true);
+        if (!$ok) {
+            // A partial multi-inbound create must not leave orphaned clients.
+            foreach ($createdInboundIds as $createdInboundId) {
+                $cleanup = new CurlRequest($marzban_list_get['url_panel'] . '/panel/api/inbounds/' . (int) $createdInboundId . '/delClientByEmail/' . rawurlencode($usernameac));
+                $cleanup->setHeaders(['Accept: application/json']);
+                $cleanup->setCookie(xuisingle_cookie_path());
+                $cleanup->post('');
+            }
+            @unlink(xuisingle_cookie_path());
+            return is_array($lastResponse) ? $lastResponse : array('status' => 502, 'body' => '', 'error' => 'ساخت سرویس در یکی از inboundها ناموفق بود.');
+        }
+        $createdInboundIds[] = $currentInboundId;
+    }
     @unlink(xuisingle_cookie_path());
-    return $response;
+    return $lastResponse;
 }
 function updateClient($namepanel, $uuid, array $config)
 {
@@ -908,4 +1041,70 @@ function removeClient($location, $username)
     $response = $req->post(array());
     @unlink(xuisingle_cookie_path());
     return $response;
+}
+
+if (!function_exists('xui_disable_client')) {
+    /** Disable all records for an email; used when an aggregate quota is exhausted. */
+    function xui_disable_client($panelName, $username): bool
+    {
+        $panel = select('marzban_panel', '*', 'name_panel', (string) $panelName, 'select');
+        if (!is_array($panel)) {
+            return false;
+        }
+        if (xui_panel_uses_token($panel)) {
+            $traffic = xui_api_token_request($panel, 'GET', '/panel/api/clients/traffic/' . rawurlencode((string) $username), null, 8);
+            $decoded = json_decode((string) ($traffic['body'] ?? ''), true);
+            $client = is_array($decoded) && is_array($decoded['obj'] ?? null) ? $decoded['obj'] : [];
+            $client['email'] = (string) $username;
+            $client['enable'] = false;
+            $client['tgId'] = isset($client['tgId']) && is_numeric($client['tgId']) ? (int) $client['tgId'] : 0;
+            foreach (array('limitIp', 'reset', 'totalGB', 'expiryTime') as $field) {
+                if (array_key_exists($field, $client)) {
+                    $client[$field] = is_numeric($client[$field]) ? (int) $client[$field] : 0;
+                }
+            }
+            $result = xui_api_token_request(
+                $panel,
+                'POST',
+                '/panel/api/clients/update/' . rawurlencode((string) $username),
+                $client,
+                8
+            );
+            $body = json_decode((string) ($result['body'] ?? ''), true);
+            return empty($result['error'])
+                && (int) ($result['status'] ?? 0) >= 200
+                && (int) ($result['status'] ?? 0) < 300
+                && (!is_array($body) || !array_key_exists('success', $body) || $body['success'] === true);
+        }
+
+        login((string) ($panel['code_panel'] ?? ''), false);
+        $list = panel_get_inbounds_list((string) ($panel['url_panel'] ?? ''));
+        $decoded = json_decode((string) ($list['body'] ?? ''), true);
+        $changed = false;
+        foreach (($decoded['obj'] ?? []) as $inbound) {
+            if (!is_array($inbound) || empty($inbound['id'])) {
+                continue;
+            }
+            $settings = $inbound['settings'] ?? [];
+            if (is_string($settings)) {
+                $settings = json_decode($settings, true);
+            }
+            foreach (($settings['clients'] ?? []) as $client) {
+                if (!is_array($client) || (string) ($client['email'] ?? '') !== (string) $username) {
+                    continue;
+                }
+                $client['enable'] = false;
+                $config = [
+                    'id' => (int) $inbound['id'],
+                    'settings' => json_encode(['clients' => [$client], 'decryption' => 'none', 'fallbacks' => []]),
+                ];
+                $result = updateClient((string) $panelName, (string) ($client['id'] ?? ''), $config);
+                if (empty($result['error']) && (int) ($result['status'] ?? 0) >= 200 && (int) ($result['status'] ?? 0) < 300) {
+                    $changed = true;
+                }
+            }
+        }
+        @unlink(xuisingle_cookie_path());
+        return $changed;
+    }
 }

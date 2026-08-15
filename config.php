@@ -38,11 +38,21 @@ if (!function_exists('hamoix_csrf_check')) {
         }
         $incoming = $_POST['_csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         if (is_string($incoming) && $incoming !== '') {
-            if (!hash_equals(hamoix_csrf_token(), $incoming)) {
-                http_response_code(403);
-                exit('درخواست نامعتبر — توکن CSRF اشتباه است');
+            $validTokens = [hamoix_csrf_token()];
+            // A few legacy admin forms use csrf_token instead of the newer
+            // hamoix_csrf session key. Both values are server-generated and
+            // accepting the legacy value keeps old forms from failing after an
+            // update without weakening the same-session check.
+            if (!empty($_SESSION['csrf_token']) && is_string($_SESSION['csrf_token'])) {
+                $validTokens[] = $_SESSION['csrf_token'];
             }
-            return;
+            foreach ($validTokens as $validToken) {
+                if ($validToken !== '' && hash_equals($validToken, $incoming)) {
+                    return;
+                }
+            }
+            http_response_code(403);
+            exit('درخواست نامعتبر — توکن CSRF اشتباه است');
         }
 
         // Protect legacy forms that predate the hidden token. Browsers send

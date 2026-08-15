@@ -240,6 +240,18 @@ class ManagePanel
                     if ($inoice != false) {
                         $Output['subscription_url'] = "https://$domainhosts/sub/" . $inoice['id_invoice'];
                     }
+                    if ($data_limit > 0) {
+                        require_once __DIR__ . '/panel/lib/quota.php';
+                        hamoix_quota_register(
+                            $pdo,
+                            (string) $Get_Data_Panel['name_panel'],
+                            (string) $usernameC,
+                            $data_limit,
+                            $inbounds,
+                            (string) ($Data_Config['type'] ?? 'panel'),
+                            (string) ($Data_Config['from_id'] ?? '')
+                        );
+                    }
                 }
         } elseif ($Get_Data_Panel['type'] == "alireza_single") {
             $subId = bin2hex(random_bytes(8));

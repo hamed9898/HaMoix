@@ -4,6 +4,10 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../panels.php';
+require_once __DIR__ . '/lib/quota.php';
+if ($pdo instanceof PDO) {
+    hamoix_quota_ensure_table($pdo);
+}
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
 $query->execute([':username' => (string) ($_SESSION['user'] ?? '')]);
@@ -13,10 +17,7 @@ if (!isset($_SESSION['user']) || !$adminRow) {
     exit;
 }
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = (string) $_SESSION['csrf_token'];
+$_csrf = hamoix_csrf_token();
 $saleError = '';
 
 function admin_sale_escape($value): string
@@ -71,10 +72,7 @@ if ($selectedUserId !== '') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'sell_service') {
-    if (!hash_equals($_csrf, (string) ($_POST['_csrf'] ?? ''))) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
+    hamoix_csrf_check();
 
     $selectedUserId = trim((string) ($_POST['user_id'] ?? ''));
     $userStmt = $pdo->prepare("SELECT * FROM user WHERE id = :id LIMIT 1");
@@ -184,6 +182,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'sell
                 'Status' => 'active',
             ];
             admin_sale_insert_invoice($pdo, $invoiceValues);
+            hamoix_quota_register(
+                $pdo,
+                $panelName,
+                $serviceUsername,
+                $volumeGb > 0 ? (int) round($volumeGb * 1073741824) : 0,
+                $product['inbounds'] ?? [],
+                'admin_sale',
+                $invoiceId
+            );
             if ($price > 0) {
                 $debit = $pdo->prepare("UPDATE user SET Balance = Balance - :amount WHERE id = :id");
                 $debit->execute([':amount' => $price, ':id' => $selectedUserId]);

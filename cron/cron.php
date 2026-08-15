@@ -102,6 +102,18 @@ if (!($pdo instanceof PDO)) {
     exit;
 }
 
+// Enforce aggregate traffic quotas before dispatching the regular jobs. The
+// check is intentionally best-effort: a temporary panel outage never disables
+// a service or marks it exhausted.
+$quotaResult = ['checked' => 0, 'exhausted' => 0, 'errors' => 0];
+try {
+    require_once APP_ROOT_PATH . '/x-ui_single.php';
+    require_once APP_ROOT_PATH . '/panel/lib/quota.php';
+    $quotaResult = hamoix_quota_enforce_all($pdo);
+} catch (Throwable $e) {
+    error_log('[cron] shared quota check failed: ' . $e->getMessage());
+}
+
 if (function_exists('ensureCronRuntimeStateTable')) {
     try { ensureCronRuntimeStateTable($pdo); } catch (Throwable $e) {}
 }
@@ -281,5 +293,8 @@ if (!empty($dueUrls)) {
 }
 
 @unlink($lockFile);
-echo "OK " . date('Y-m-d H:i:s') . " (Asia/Tehran) | dispatched=" . count($dueUrls) . "\n";
+echo "OK " . date('Y-m-d H:i:s') . " (Asia/Tehran) | dispatched=" . count($dueUrls)
+    . " | quota_checked=" . (int) ($quotaResult['checked'] ?? 0)
+    . " | quota_exhausted=" . (int) ($quotaResult['exhausted'] ?? 0)
+    . " | quota_errors=" . (int) ($quotaResult['errors'] ?? 0) . "\n";
 

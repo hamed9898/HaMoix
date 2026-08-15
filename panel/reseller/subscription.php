@@ -44,6 +44,19 @@ if ($rawConfigs !== '') {
     }
 }
 $expireTs = (int) ($svc['expire_at'] ?? 0);
+$quota = null;
+if ($pdo instanceof PDO) {
+    try {
+        $quotaStmt = $pdo->prepare("SELECT limit_bytes, used_bytes, status FROM hamoix_shared_quota WHERE panel_name = :panel AND username = :username LIMIT 1");
+        $quotaStmt->execute([':panel' => (string) $svc['panel_name'], ':username' => (string) $svc['username']]);
+        $quota = $quotaStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (\Throwable $e) {
+        // Quota migration may not have run on an older installation.
+    }
+}
+$quotaLimitGb = $quota ? ((float) $quota['limit_bytes'] / 1073741824) : (float) ($svc['volume_gb'] ?? 0);
+$quotaUsedGb = $quota ? ((float) $quota['used_bytes'] / 1073741824) : 0.0;
+$quotaExhausted = $quota && (string) ($quota['status'] ?? '') === 'exhausted';
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
@@ -97,10 +110,16 @@ $expireTs = (int) ($svc['expire_at'] ?? 0);
             <?php endif; ?>
 
             <div class="info-grid mt-3" style="display:flex; gap:16px; flex-wrap:wrap; color:var(--text-muted);">
-                <span><?php echo icon('package', 'svg-icon svg-xs'); ?> حجم: <?php echo reseller_e($svc['volume_gb']); ?> GB</span>
+                <span><?php echo icon('package', 'svg-icon svg-xs'); ?> سهمیهٔ مشترک کل: <?php echo reseller_e(number_format($quotaLimitGb, 2)); ?> GB</span>
+                <?php if ($quota): ?><span><?php echo icon('chart-line', 'svg-icon svg-xs'); ?> مصرف مجموع inboundها: <?php echo reseller_e(number_format($quotaUsedGb, 2)); ?> GB</span><?php endif; ?>
                 <span><?php echo icon('circle-dot', 'svg-icon svg-xs'); ?> مدت: <?php echo reseller_e($svc['days']); ?> روز</span>
                 <span><?php echo icon('circle-info', 'svg-icon svg-xs'); ?> انقضا: <?php echo $expireTs > 0 ? reseller_jdate($expireTs, 'Y/m/d') : 'نامحدود'; ?></span>
             </div>
+            <?php if ($quotaExhausted): ?>
+                <div class="alert alert-error" style="margin-top:14px;"><?php echo icon('ban', 'svg-icon'); ?><span>سهمیهٔ مشترک تمام شده است؛ همهٔ کانفیگ‌های این سرویس غیرفعال شده‌اند.</span></div>
+            <?php elseif ($quota): ?>
+                <div class="alert alert-info" style="margin-top:14px;"><?php echo icon('circle-info', 'svg-icon'); ?><span>مصرف همهٔ inboundهای این اشتراک روی همین سهمیهٔ مشترک محاسبه می‌شود؛ هیچ inbound سهمیهٔ جداگانه‌ای ندارد.</span></div>
+            <?php endif; ?>
         </div>
     </div>
 

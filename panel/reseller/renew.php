@@ -85,6 +85,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $oldLimit = (float) ($cur['data_limit'] ?? 0);
     $newLimit = $volumeBytes > 0 ? $oldLimit + $volumeBytes : 0;
+    $selectedInboundIds = xui_normalize_inbound_ids($product['inbounds'] ?? []);
+    $sharedQuota = count($selectedInboundIds) > 1;
+    $quotaLimit = $newLimit;
+    if ($sharedQuota) {
+        try {
+            $quotaStmt = $pdo->prepare("SELECT limit_bytes FROM hamoix_shared_quota WHERE panel_name = :panel AND username = :username LIMIT 1");
+            $quotaStmt->execute([':panel' => $panelName, ':username' => $username]);
+            $existingQuota = $quotaStmt->fetchColumn();
+            $quotaLimit = ($existingQuota !== false ? (int) $existingQuota : 0) + $volumeBytes;
+        } catch (\Throwable $e) {
+            $quotaLimit = $volumeBytes;
+        }
+    }
 
     $type = (string) $panelRow['type'];
     if ($type === 'marzban') {
@@ -96,7 +109,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'settings' => json_encode([
                 'clients' => [
                     [
-                        'totalGB'    => xui_bytes_to_gb($newLimit),
+                        // Shared multi-inbound quotas are enforced by Hamoix,
+                        // not duplicated as a full limit on each 3x-ui client.
+                        'totalGB'    => $sharedQuota ? 0 : xui_bytes_to_gb($newLimit),
                         'expiryTime' => $newExpire * 1000,
                         'enable'     => true,
                     ],
@@ -147,6 +162,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':days' => (string) $newDays,
         ':id'   => $serviceId,
     ]);
+    if ($type === 'x-ui_single' && $quotaLimit > 0) {
+        hamoix_quota_register(
+            $pdo,
+            $panelName,
+            $username,
+            $quotaLimit,
+            $selectedInboundIds,
+            'reseller_renewal',
+            (string) $serviceId,
+            false
+        );
+    }
 
     reseller_flash_set('success', 'سرویس با موفقیت تمدید شد.');
     header('Location: services.php');

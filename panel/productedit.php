@@ -3,6 +3,27 @@ session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../function.php';
+require_once __DIR__ . '/../x-ui_single.php';
+
+$hasInboundsColumn = false;
+try {
+    $columnCheck = $pdo->prepare(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product' AND COLUMN_NAME = 'inbounds'"
+    );
+    $columnCheck->execute();
+    if (!(bool) $columnCheck->fetchColumn()) {
+        try {
+            $pdo->exec("ALTER TABLE `product` ADD COLUMN `inbounds` TEXT NULL");
+        } catch (\Throwable $e) {
+            // Keep editing the rest of the product if this old DB user cannot ALTER.
+        }
+    }
+    $columnCheck->execute();
+    $hasInboundsColumn = (bool) $columnCheck->fetchColumn();
+} catch (\Throwable $e) {
+    error_log('[panel/productedit] inbound column check: ' . $e->getMessage());
+}
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
 $query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
@@ -35,9 +56,10 @@ if ($id_product === false) {
 }
 $product       = select("product", "*", "id", $id_product, "select");
 
-$panelQuery = $pdo->prepare("SELECT name_panel FROM marzban_panel ORDER BY id ASC");
+$panelQuery = $pdo->prepare("SELECT * FROM marzban_panel ORDER BY id ASC");
 $panelQuery->execute();
 $listpanel = $panelQuery->fetchAll(PDO::FETCH_ASSOC);
+$savedInbounds = is_array($product) ? xui_normalize_inbound_ids($product['inbounds'] ?? []) : [];
 
 if ($product == false) {
     $statusmessage = true;
@@ -91,6 +113,29 @@ if ($product == false) {
         $locationPost = htmlspecialchars($_POST['Location'] ?? '', ENT_QUOTES, 'UTF-8');
         if ($product['Location'] != $locationPost) {
             update("product", "Location", $locationPost, "id", $id_product);
+        }
+
+        $inboundIds = xui_normalize_inbound_ids($_POST['inbounds'] ?? []);
+        $selectedPanel = null;
+        foreach ($listpanel as $panelRow) {
+            if ((string) ($panelRow['name_panel'] ?? '') === (string) $locationPost) {
+                $selectedPanel = $panelRow;
+                break;
+            }
+        }
+        if ($locationPost === '/all' || !is_array($selectedPanel) || !in_array((string) ($selectedPanel['type'] ?? ''), ['x-ui_single'], true)) {
+            $inboundIds = [];
+        } elseif ($inboundIds) {
+            try {
+                $availableIds = array_column(xui_get_inbounds($selectedPanel), 'id');
+                $inboundIds = array_values(array_intersect($inboundIds, array_map('intval', $availableIds)));
+            } catch (\Throwable $e) {
+                error_log('[panel/productedit] inbound validation: ' . $e->getMessage());
+                $inboundIds = [];
+            }
+        }
+        if ($hasInboundsColumn) {
+            update("product", "inbounds", json_encode($inboundIds, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), "id", $id_product);
         }
 
         $note = htmlspecialchars($_POST['note'], ENT_QUOTES, 'UTF-8');
@@ -215,6 +260,13 @@ if ($product == false) {
                         </select>
                     </div>
 
+                    <div class="form-group" id="productEditInboundsGroup" style="display:none;">
+                        <label class="form-label">اینـباندهای محصول (چند انتخابی)</label>
+                        <div id="productEditInboundsStatus" class="text-muted" style="margin-bottom:8px;">در حال آماده‌سازی…</div>
+                        <div id="productEditInboundsList" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px;"></div>
+                        <small class="text-muted">مصرف همهٔ inboundهای این محصول با یک سهمیهٔ مشترک محاسبه می‌شود.</small>
+                    </div>
+
                     <div class="form-group">
                         <label class="form-label">دسته‌بندی</label>
                         <input type="text" name="category" class="form-control" value="<?php echo htmlspecialchars($product['category'], ENT_QUOTES, 'UTF-8'); ?>">
@@ -249,6 +301,47 @@ if ($product == false) {
     </section>
 </section>
 
+<script>
+(function () {
+    var panel = document.querySelector('select[name="Location"]');
+    var group = document.getElementById('productEditInboundsGroup');
+    var list = document.getElementById('productEditInboundsList');
+    var status = document.getElementById('productEditInboundsStatus');
+    var saved = <?php echo json_encode(array_values($savedInbounds)); ?>;
+    if (!panel || !group || !list || !status) return;
+    function load() {
+        var option = panel.options[panel.selectedIndex];
+        var type = option ? (option.getAttribute('data-panel-type') || '') : '';
+        var id = option ? (option.getAttribute('data-panel-id') || '0') : '0';
+        var supported = type === 'x-ui_single';
+        group.style.display = supported ? '' : 'none'; list.innerHTML = '';
+        if (!supported || id === '0') return;
+        status.textContent = 'در حال دریافت inboundهای پنل…';
+        fetch('../panel/product.php?ajax=inbounds&panel_id=' + encodeURIComponent(id), {credentials:'same-origin'})
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j.ok || !Array.isArray(j.inbounds) || !j.inbounds.length) { status.textContent = j.message || 'inboundی دریافت نشد.'; return; }
+                status.textContent = j.inbounds.length + ' inbound دریافت شد.';
+                j.inbounds.forEach(function (item) {
+                    var label = document.createElement('label'); label.className = 'form-label';
+                    label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--border-soft);border-radius:8px;';
+                    var input = document.createElement('input'); input.type = 'checkbox'; input.name = 'inbounds[]'; input.value = String(item.id);
+                    input.checked = saved.indexOf(Number(item.id)) !== -1;
+                    label.appendChild(input); label.appendChild(document.createTextNode('#' + item.id + ' — ' + (item.remark || 'بدون نام') + (item.protocol ? ' (' + item.protocol + ')' : '') + (item.port ? ' :' + item.port : '')));
+                    list.appendChild(label);
+                });
+            })
+            .catch(function () { status.textContent = 'خطا در دریافت inboundها؛ اتصال پنل را بررسی کنید.'; });
+    }
+    panel.querySelectorAll('option').forEach(function (option) {
+        var name = option.value;
+        var found = <?php echo json_encode(array_values(array_map(static function ($p) { return ['name' => (string) ($p['name_panel'] ?? ''), 'id' => (int) ($p['id'] ?? 0), 'type' => (string) ($p['type'] ?? '')]; }, $listpanel))); ?>.find(function (p) { return p.name === name; });
+        if (found) { option.setAttribute('data-panel-id', found.id); option.setAttribute('data-panel-type', found.type); }
+    });
+    panel.addEventListener('change', function () { saved = []; load(); });
+    load();
+})();
+</script>
 </body>
 </html>
 
