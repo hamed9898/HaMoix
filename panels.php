@@ -241,7 +241,6 @@ class ManagePanel
                         $Output['subscription_url'] = "https://$domainhosts/sub/" . $inoice['id_invoice'];
                     }
                 }
-            }
         } elseif ($Get_Data_Panel['type'] == "alireza_single") {
             $subId = bin2hex(random_bytes(8));
             $Expireac = $expire * 1000;
